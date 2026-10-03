@@ -1,0 +1,21 @@
+{
+  "Administration.md": "ADMINISTRATION.md",
+  "Api.md": "API.md",
+  "Architecture.md": "ARCHITECTURE.md",
+  "Backup-Restore.md": "BACKUP-RESTORE.md",
+  "Configuration.md": "CONFIGURATION.md",
+  "Debian-Packaging.md": "DEBIAN-PACKAGING.md",
+  "Development.md": "DEVELOPMENT.md",
+  "Installation.md": "INSTALLATION.md",
+  "Key-Rotation.md": "KEY-ROTATION.md",
+  "Operations.md": "OPERATIONS.md",
+  "Releases.md": "RELEASES.md",
+  "Repository.md": "REPOSITORY.md",
+  "Reverse-Proxy.md": "REVERSE-PROXY.md",
+  "Roadmap.md": "ROADMAP.md",
+  "Security.md": "SECURITY.md",
+  "Signing.md": "SIGNING.md",
+  "Ui.md": "UI.md",
+  "Verification.md": "VERIFICATION.md",
+  "Xxc-Trust.md": "XXC-TRUST.md"
+}

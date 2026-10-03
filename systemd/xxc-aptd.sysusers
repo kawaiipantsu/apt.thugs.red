@@ -1,0 +1,3 @@
+g xxc-aptd-admin -
+u xxc-aptd - "XXC APT repository daemon" /var/lib/xxc-aptd /usr/sbin/nologin
+m xxc-aptd xxc-aptd-admin

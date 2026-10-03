@@ -1,0 +1,3 @@
+d /etc/xxc/apt.keys 0700 xxc-aptd xxc-aptd-admin -
+f /var/log/xxc-aptd.log 0640 xxc-aptd xxc-aptd-admin -
+f /var/log/xxc-aptd-audit.log 0600 xxc-aptd xxc-aptd-admin -

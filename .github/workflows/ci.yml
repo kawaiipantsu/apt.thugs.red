@@ -1,0 +1,43 @@
+name: ci
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  debian:
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test prerequisites
+        run: |
+          printf 'deb https://deb.debian.org/debian trixie-backports main\n' > /etc/apt/sources.list.d/xxc-backports.list
+          apt-get update
+          apt-get install -y build-essential pkg-config liblzma-dev apt-utils gnupg openssl curl ca-certificates git python3 scdoc debhelper lintian nodejs npm chromium
+          apt-get install -y -t trixie-backports cargo rustc
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
+          sh /tmp/rustup.sh -y --profile minimal --default-toolchain 1.94.1 --component clippy,rustfmt
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: debian-rust-1.94.1-${{ hashFiles('Cargo.lock') }}
+      - name: Test-only tools
+        run: |
+          cargo install cargo-audit --locked
+          npm ci --ignore-scripts
+      - name: All local quality gates
+        run: make ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debian-package
+          path: dist/*.deb
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-review
+          path: .build/ui/*.png

@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+    systemd-sysusers /usr/lib/sysusers.d/xxc-aptd.conf
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/xxc-aptd.conf
+    xxc-aptd init --system
+fi
+#DEBHELPER#

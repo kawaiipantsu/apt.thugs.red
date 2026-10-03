@@ -1,0 +1,10 @@
+/var/log/xxc-aptd.log /var/log/xxc-aptd-audit.log {
+    weekly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0600 xxc-aptd xxc-aptd-admin
+    su xxc-aptd xxc-aptd-admin
+}

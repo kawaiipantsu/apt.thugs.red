@@ -1,0 +1,18 @@
+[package]
+name = "xxc-aptd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+fs2.workspace = true
+libc.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+xxc-aptd-core.workspace = true
+xxc-aptd-web.workspace = true

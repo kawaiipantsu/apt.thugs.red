@@ -1,0 +1,10 @@
+{
+  "name": "lazy-regex-proc_macros",
+  "version": "3.6.2",
+  "license": "MIT",
+  "commit": "3263b3380ef7ca68f134340a44da87b34311edb8",
+  "source": "https://raw.githubusercontent.com/Canop/lazy-regex/3263b3380ef7ca68f134340a44da87b34311edb8/LICENSE",
+  "files": {
+    "LICENSE": "89461664ce2aee7d80ea8fba7118fe7abd490d76ba435cf1d81d3128e060711f"
+  }
+}

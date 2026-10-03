@@ -1,0 +1,10 @@
+{
+  "name": "debversion",
+  "version": "0.5.4",
+  "license": "Apache-2.0",
+  "commit": "ebb9a9db40a26ad904b311571ae661323f66bd33",
+  "source": "https://raw.githubusercontent.com/jelmer/debian-parsers/ebb9a9db40a26ad904b311571ae661323f66bd33/COPYING",
+  "files": {
+    "COPYING": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  }
+}

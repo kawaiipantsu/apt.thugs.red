@@ -1,0 +1,83 @@
+# XXC-APTD 0.1.0. Unknown and unimplemented options are rejected.
+# Normal operation reads this file; it never rewrites it.
+[server]
+# Set 0.0.0.0:8088 to accept public HTTP on all IPv4 interfaces.
+public_listen = "127.0.0.1:8088"
+# Non-loopback admin bindings also require admin.allow_remote = true.
+admin_listen = "127.0.0.1:8089"
+admin_socket = "/run/xxc-aptd/admin.sock"
+external_url = "https://apt.thugs.red"
+repository_prefix = "/repo"
+max_upload_bytes = 2147483648
+upload_timeout_seconds = 900
+max_concurrent_uploads = 2
+
+[paths]
+repository = "/var/lib/xxc-aptd/repository"
+staging = "/var/lib/xxc-aptd/staging"
+uploads = "/var/lib/xxc-aptd/uploads"
+temporary = "/var/lib/xxc-aptd/tmp"
+database = "/var/lib/xxc-aptd/state.db"
+keys = "/etc/xxc/apt.keys"
+runtime = "/run/xxc-aptd"
+
+[repository]
+origin = "THUGS(red)"
+label = "THUGS(red)"
+suite = "zerotrust"
+codename = "zerotrust"
+components = ["main"]
+architectures = ["amd64", "arm64"]
+description = "THUGS(red) APT Repository"
+version = "1"
+not_automatic = false
+but_automatic_upgrades = false
+valid_until_seconds = 1209600
+acquire_by_hash = true
+
+[signing]
+# gpg or xxc-trust; remote signing requires enabled Trust and a pinned fingerprint.
+backend = "gpg"
+remote_key_id = ""
+# Required for publishing. Use a full public fingerprint; never secret material.
+fingerprint = ""
+public_ascii_name = "thugsred.gpg.key"
+public_keyring_name = "thugsred-archive-keyring.gpg"
+command_timeout_seconds = 120
+
+[web]
+site_name = "THUGS(red) APT"
+tagline = "packages from the edge"
+main_site_url = "https://thugs.red"
+
+[logging]
+level = "info"
+file = "/var/log/xxc-aptd.log"
+audit_file = "/var/log/xxc-aptd-audit.log"
+strict = false
+
+# Set this to the browser-facing administrator origin, including a nondefault port.
+# Authentication and CSRF cannot be disabled. Forwarded identity headers are ignored.
+[admin]
+enabled = true
+# Explicit opt-in for a wildcard or other non-loopback administrative bind.
+# Authentication, roles, CSRF and Host/Origin validation remain mandatory.
+allow_remote = false
+external_url = "https://admin.apt.thugs.red"
+session_lifetime_seconds = 43200
+login_window_seconds = 900
+login_max_attempts = 10
+max_sessions_per_user = 8
+
+# Optional X.509 inventory integration. Configure the actual endpoint locally.
+# Bearer tokens are read from systemd credentials, never from this file.
+[xxc_trust]
+enabled = false
+api_url = "https://ca.example.invalid/api/v1"
+token_credential = "xxc-trust-token"
+authority_id = ""
+template_id = ""
+request_timeout_seconds = 10
+max_response_bytes = 1048576
+# Optional additional public CA certificate for an internally issued API certificate:
+# ca_certificate = "/etc/xxc/trust-api-ca.pem"

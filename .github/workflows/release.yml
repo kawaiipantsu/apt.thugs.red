@@ -1,0 +1,36 @@
+name: release
+on:
+  push:
+    tags: ['v[0-9]*']
+permissions:
+  contents: write
+  discussions: write
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    container: debian:trixie
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build prerequisites
+        run: |
+          printf 'deb https://deb.debian.org/debian trixie-backports main\n' > /etc/apt/sources.list.d/xxc-backports.list
+          apt-get update
+          apt-get install -y build-essential pkg-config liblzma-dev apt-utils gnupg curl ca-certificates git python3 scdoc debhelper lintian gh
+          apt-get install -y -t trixie-backports cargo rustc
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
+          sh /tmp/rustup.sh -y --profile minimal --default-toolchain 1.94.1
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Verify tag and build
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          make version-check docs-check test deb lintian
+      - name: Publish release and optional discussion
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCUSSION_CATEGORY: ${{ vars.RELEASE_DISCUSSION_CATEGORY }}
+        run: |
+          if [ -n "$DISCUSSION_CATEGORY" ]; then
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --discussion-category "$DISCUSSION_CATEGORY" dist/*.deb
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes dist/*.deb
+          fi

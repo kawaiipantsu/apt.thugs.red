@@ -1,0 +1,38 @@
+[Unit]
+Description=XXC-APTD Debian repository service
+Documentation=man:xxc-aptd(8)
+After=network.target
+
+[Service]
+Type=exec
+User=xxc-aptd
+Group=xxc-aptd-admin
+ExecStart=/usr/sbin/xxc-aptd --config /etc/xxc/aptd.conf serve
+RuntimeDirectory=xxc-aptd
+RuntimeDirectoryMode=0750
+StateDirectory=xxc-aptd
+StateDirectoryMode=0700
+CacheDirectory=xxc-aptd
+CacheDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=35min
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/etc/xxc/apt.keys /var/log/xxc-aptd.log /var/log/xxc-aptd-audit.log
+
+[Install]
+WantedBy=multi-user.target
