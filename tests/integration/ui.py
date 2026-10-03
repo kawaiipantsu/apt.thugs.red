@@ -9,16 +9,32 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import argparse
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--screenshots", action="store_true", help="capture documentation images using disposable fixture data")
+options = parser.parse_args()
 
 with tempfile.TemporaryDirectory(prefix="xxc-aptd-ui-") as temporary:
     h = Harness(Path(temporary))
     ca, service_env = configure(h)
     try:
+        if options.screenshots:
+            # Only the generated client instructions use this reserved example
+            # origin. Browser traffic still goes to the isolated loopback listener.
+            h.config.write_text(h.config.read_text().replace(h.origin, "http://apt.example.test")
+                                .replace("fixture-public.asc", "thugsred.gpg.key")
+                                .replace("fixture-public.gpg", "thugsred-archive-keyring.gpg"))
         h.start(service_env)
         fixture = h.fixture()
         status, package = h.api("POST", "uploads", fixture.read_bytes(), raw=True)
         assert status == 200
         h.api("POST", "uploads/" + package["id"] + "/stage", {})
+        if options.screenshots:
+            extra = h.fixture(version="1.0", name="xxc-browser-fixture")
+            status, package = h.api("POST", "uploads", extra.read_bytes(), raw=True)
+            assert status == 200
+            assert h.api("POST", "uploads/" + package["id"] + "/stage", {})[0] == 200
         h.job("repository/publish")
         password = secrets.token_urlsafe(24)
         for name,role in [("fixture-admin","administrator"),("fixture-viewer","viewer")]:
@@ -30,7 +46,9 @@ with tempfile.TemporaryDirectory(prefix="xxc-aptd-ui-") as temporary:
         env = dict(os.environ, XXC_TEST_LOGIN=str(credentials), XXC_TEST_PACKAGE=str(new_fixture), XXC_TEST_ORIGIN=h.origin, XXC_TEST_ADMIN=f"http://127.0.0.1:{h.admin_port}")
         if shutil.which("chromium"):
             env.setdefault("CHROMIUM_PATH", shutil.which("chromium"))
-        result = subprocess.run([str(PROJECT / "node_modules/.bin/playwright"), "test"], env=env)
+        command = (["node", str(PROJECT / "tests/ui/screenshots.mjs")] if options.screenshots
+                   else [str(PROJECT / "node_modules/.bin/playwright"), "test"])
+        result = subprocess.run(command, env=env)
         if result.returncode:
             raise SystemExit(result.returncode)
     finally:

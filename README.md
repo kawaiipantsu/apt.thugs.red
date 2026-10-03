@@ -25,6 +25,16 @@ users, roles, reviewed publication and session revocation are supported.
 Automated retention/refresh, managed key controls, package removal and production
 migration acceptance remain on the [roadmap](docs/ROADMAP.md).
 
+## Screenshots
+
+| Public repository | Administration |
+| --- | --- |
+| ![Public home with repository status, package search and setup instructions](docs/screenshots/public-home.png) | ![Authenticated dashboard with upload, review and verification controls](docs/screenshots/admin-dashboard.png) |
+
+See the [screenshot gallery](docs/SCREENSHOTS.md) for package details, directory
+browsing, remote key management, publication review and mobile layouts.
+Images use disposable fixture data. Regenerate them locally with `make screenshots`.
+
 ## Architecture
 
 ```mermaid

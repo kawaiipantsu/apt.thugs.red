@@ -5,7 +5,7 @@ DESTDIR ?=
 export PREFIX SYSCONFDIR LOCALSTATEDIR DESTDIR
 
 .DEFAULT_GOAL := build
-.PHONY: all build build-debug build-release fmt fmt-check lint check test test-unit test-integration test-ui test-systemd licenses security audit man docs docs-check wiki-build wiki-check wiki-sync deb deb-clean lintian install uninstall clean distclean version version-check bump-patch bump-minor bump-major bump-auto deb-revision release-patch release-minor release-major publish-release ci
+.PHONY: all build build-debug build-release fmt fmt-check lint check test test-unit test-integration test-ui test-systemd screenshots licenses security audit man docs docs-check wiki-build wiki-check wiki-sync deb deb-clean lintian install uninstall clean distclean version version-check bump-patch bump-minor bump-major bump-auto deb-revision release-patch release-minor release-major publish-release ci
 all: build
 build: build-debug
 build-debug:
@@ -31,6 +31,8 @@ test-integration: build-debug
 	python3 tests/integration/remote_signing_e2e.py
 test-ui: build-debug
 	python3 tests/integration/ui.py
+screenshots: build-debug
+	python3 tests/integration/ui.py --screenshots
 test-systemd: build-debug
 	python3 tests/integration/systemd_smoke.py
 security: audit test

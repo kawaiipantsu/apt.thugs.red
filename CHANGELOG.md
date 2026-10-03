@@ -23,3 +23,4 @@
 - Add XXC Trust OpenPGP custody and remote Debian Release signing with fingerprint pins and local verification.
 - Add remote key generation/list/show/public-export/verify CLI/API and admin pages.
 - Verify and roll back retained generations offline using isolated public-key snapshots.
+- Add a public/admin/mobile screenshot gallery and isolated `make screenshots` capture workflow.

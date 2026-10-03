@@ -1,5 +1,8 @@
 # Public interface
 
+See the [screenshot gallery](SCREENSHOTS.md) for public, administrative and mobile
+pages captured from an isolated fixture repository.
+
 The original project favicon and locally embedded CSS/JavaScript use a near-black
 surface, thin gray borders, bright red accents and a system monospace stack.
 No CDN or mandatory Node runtime is used. CSS variables in

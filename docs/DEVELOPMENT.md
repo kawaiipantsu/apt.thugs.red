@@ -24,6 +24,22 @@ Rust/Cargo 1.94 or later from trixie-backports (also satisfying dpkg build
 dependencies), or use an equivalent locally maintained toolchain. CI installs
 the backports packages and pins rustup 1.94.1 for compilation and linting.
 
+## Documentation screenshots
+
+Run `make screenshots` with the same development dependencies as `make test-ui`.
+It starts an isolated daemon and a local HTTPS signing fixture, publishes sample
+packages, then captures the public and authenticated admin workflow using Chromium.
+No production configuration, credentials or CA connection are used. The generated
+client instructions use the reserved `apt.example.test` domain.
+
+Review the 13 images in `.build/screenshots/`, then copy the reviewed PNG files to
+`docs/screenshots/`. The [gallery](SCREENSHOTS.md) and README use those tracked
+images. Signing fingerprints are masked, login fields are empty, and credentials
+stay in the temporary test directory. Do not replace these with captures of a live
+deployment containing private addresses, account information or key identifiers.
+
+## Tests
+
 On a systemd development host, root may also run `make test-systemd`. It uses
 isolated paths and ports under .build, a temporary transient unit and an
 unprivileged account to exercise the shipped sandbox while signing/publishing.

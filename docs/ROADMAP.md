@@ -38,6 +38,7 @@ production 1.0 acceptance. See [VERIFICATION.md](VERIFICATION.md) for evidence.
 - [x] Primary-route sitemap and robots.txt
 - [x] Command copy enhancement; core navigation works without JavaScript
 - [x] Desktop/mobile browser, keyboard and automated WCAG checks on core public pages
+- [x] Reviewed public/admin/mobile screenshot gallery with repeatable fixture capture
 - [ ] Directory sorting/filtering, timestamps, checksums and formatted metadata views
 - [ ] Debian version ordering and complete retained-version detail pagination
 - [ ] Package sitemap shards and large-repository performance tests
