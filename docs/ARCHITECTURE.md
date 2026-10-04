@@ -2,7 +2,8 @@
 
 XXC-APTD is a THUGS(red) project by Kawaiipantsu. The target is a production
 replacement for the repository at `https://apt.thugs.red/repo`. Version 0.1.0
-is the first implementation slice, not a declaration of production readiness.
+implements signed archives, authenticated administration and project automation.
+Production readiness requires the remaining acceptance checks.
 See [ROADMAP.md](ROADMAP.md) for implemented and outstanding acceptance gates.
 
 ## Processes and trust boundaries
@@ -103,7 +104,7 @@ independent security review remain explicit gates before production 1.0.
 
 Authentication lives in core, with no Axum dependency. Session bearer values are
 256 random bits and only their SHA-256 digests are stored. Cookies are host-only,
-HttpOnly and SameSite=Strict, with Secure when either external origin uses HTTPS.
+HttpOnly and SameSite=Strict, with Secure when the administrative external origin uses HTTPS.
 HTTPS installations use a __Host- cookie prefix. Role changes, password changes,
 disabling and deletion invalidate sessions immediately. Anonymous login uses a
 short-lived single-use CSRF challenge and generic failures; bounded Argon2 work
@@ -111,7 +112,7 @@ and durable per-account/per-peer attempt windows limit guessing. Forwarded
 identity/client-IP headers never affect authentication or throttling.
 
 HTML forms and JSON clients share the same management services and actor audit
-context. Every mutating HTTP request must match the configured admin origin and
+context. Every session-authenticated mutating HTTP request must match the configured admin origin and
 the session CSRF token. Multipart uploads validate the token before streaming
 file bytes. The public router has no user/session routes. Unix administration
 remains authorized through socket permissions, with no browser-cookie bypass
@@ -145,3 +146,37 @@ publication worker bridges the async Trust client through its Tokio runtime
 handle, while HTTP remains responsive. It checks remote key status and the
 fingerprint pin, validates the public-only export, requests signatures and then
 verifies locally. API/UI/CLI expose no general signing oracle or private export.
+
+## Traffic, path proxies and automation
+
+Public response bodies are observed as streams into a bounded aggregate collector.
+SQLite stores daily counters, keyed client hashes and successful asset paths.
+Dashboard rendering runs aggregate reads outside the async executor. Raw client
+addresses and request secrets are excluded. Explicit trusted proxy CIDRs affect
+only client estimates, never authentication. See [ANALYTICS.md](ANALYTICS.md).
+
+The private TCP router mounts equivalent APIs and static assets beneath `/admin`
+as well as their original paths. A proxy can route `/admin` and `/admin/*` to the
+private port while forwarding every other path to the public port. Admin browser
+links use the prefix; Host, Origin and cookie rules remain unchanged.
+
+Automation tokens use independent 256-bit secrets, digest-only storage, explicit
+scopes/suites and bounded expiry. A method/route allowlist admits only project
+publishing APIs; bearer credentials cannot enter the session/UI path. Suite-scoped
+DB views enforce package membership, and tokens can read only their own jobs.
+Browser and automation mutations use the same ingest, staging and publication
+services. Token creation/revocation and job actors are audited without credentials.
+
+Package objects remain global and immutable; package_suites records per-suite
+workflow state. A complete generation manifest includes every suite's membership.
+Publishing changes only one selection and regenerates signed metadata for every
+configured suite. Legacy manifests map their original package list to the primary
+suite. Rollback is archive-wide. See [REPOSITORY.md](REPOSITORY.md).
+
+
+Public API documentation is compiled from canonical Markdown and OpenAPI assets.
+A small web presentation module renders Markdown once with escaped raw HTML and
+restricted link destinations. Askama supplies the shared visual shell. The
+handlers read only public branding, never the administrative origin or runtime
+management state. Public documentation paths and authenticated management routers
+remain separate. No external scripts or interactive credential forms are used.

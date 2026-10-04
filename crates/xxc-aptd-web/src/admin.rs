@@ -37,6 +37,10 @@ struct Page {
     token: String,
     next: String,
     query: String,
+    dashboard: Option<crate::dashboard::View>,
+    suite: String,
+    suites: Vec<String>,
+    tokens: Vec<xxc_aptd_core::tokens::Token>,
 }
 struct Record {
     id: String,
@@ -63,7 +67,15 @@ impl Page {
             token: String::new(),
             next: String::new(),
             query: String::new(),
+            dashboard: None,
+            suite: String::new(),
+            suites: vec![],
+            tokens: vec![],
         }
+    }
+    fn suite(&mut self, s: &State) {
+        self.suite = s.db.suite().into();
+        self.suites = s.config.repository.suite_names();
     }
     fn response(&self) -> Response {
         match self.render() {
@@ -91,6 +103,8 @@ pub fn router(s: State) -> Router {
         .route("/admin/jobs/{id}", get(job))
         .route("/admin/audit", get(audit))
         .route("/admin/users", get(users).post(add_user))
+        .route("/admin/tokens", get(tokens).post(create_token))
+        .route("/admin/tokens/{id}/revoke", post(revoke_token))
         .route("/admin/users/{id}", post(change_user))
         .route("/admin/settings", get(settings))
         .route("/admin/trust", get(trust_status))
@@ -101,15 +115,20 @@ pub fn router(s: State) -> Router {
         .route("/admin/logout", post(logout))
         .route("/healthz", get(api::health))
         .route("/readyz", get(api::health))
+        .with_state(s.clone())
+        .layer(middleware::from_fn_with_state(s.clone(), auth::gate));
+    let authenticated_api = Router::new()
         .route("/api/v1/auth/session", get(auth::session))
         .route("/api/v1/auth/logout", post(auth::logout))
         .with_state(s.clone())
         .merge(api::routes(s.clone()))
         .layer(middleware::from_fn_with_state(s.clone(), auth::gate));
-    let public = Router::new()
-        .route("/admin/login", get(login_page).post(login))
+    let apis = Router::new()
         .route("/api/v1/auth/challenge", get(auth::challenge))
         .route("/api/v1/auth/login", post(auth::login))
+        .with_state(s.clone())
+        .merge(authenticated_api);
+    let assets = Router::new()
         .route(
             "/static/site.css",
             get(|| async {
@@ -136,18 +155,26 @@ pub fn router(s: State) -> Router {
                     include_str!("../../../web/static/favicon.svg"),
                 )
             }),
-        )
+        );
+    let public = Router::new()
+        .route("/admin/login", get(login_page).post(login))
         .with_state(s.clone());
     secure(
         public
             .merge(private)
+            .merge(assets.clone())
+            .merge(apis.clone())
+            // Everything used by the browser stays under /admin for a single
+            // proxy location. Existing direct-port /api/v1 routes stay valid.
+            .nest("/admin", assets.merge(apis))
             .layer(DefaultBodyLimit::max(65536))
             .layer(middleware::from_fn(theme_errors))
             .layer(middleware::from_fn_with_state(s.clone(), auth::boundary)),
     )
 }
 async fn theme_errors(request: Request<Body>, next: Next) -> Response {
-    let html = request.uri().path().starts_with("/admin");
+    let html = request.uri().path().starts_with("/admin")
+        && !request.uri().path().starts_with("/admin/api/");
     let response = next.run(request).await;
     if html && (response.status().is_client_error() || response.status().is_server_error()) {
         let status = response.status();
@@ -203,14 +230,33 @@ async fn logout(App(s): App<State>, Extension(p): Extension<Principal>) -> api::
 async fn dashboard(
     App(s): App<State>,
     Extension(p): Extension<Principal>,
+    Query(q): Query<crate::dashboard::Query>,
 ) -> api::Result<Response> {
+    if !q.valid() {
+        return Err(auth::error(
+            StatusCode::BAD_REQUEST,
+            "invalid_analytics_window",
+        ));
+    }
     let mut page = Page::new("dashboard", "repository control", Some(&p));
+    let options = (
+        s.config.analytics.enabled,
+        s.config.analytics.retention_days,
+        s.analytics.dropped(),
+        s.config.server.external_url.clone(),
+    );
+    let days = q.days;
     let info = blocking(move || {
         let status = s.db.status()?;
         let current = repository::current(&s.config)?;
-        Ok((status, current))
+        let traffic =
+            s.db.analytics_snapshot(days, xxc_aptd_core::analytics::today())?;
+        Ok((status, current, traffic))
     })
     .await?;
+    page.dashboard = Some(crate::dashboard::View::new(
+        info.2, q, options.0, options.1, options.2, options.3,
+    ));
     page.stats = vec![
         ("version".into(), page.version.into()),
         ("active packages".into(), info.0["packages"].to_string()),
@@ -234,24 +280,22 @@ async fn package_records(
     q: api::Search,
     section: &str,
 ) -> api::Result<Response> {
+    let s = api::scoped(s, q.suite.as_deref())?;
     if q.q.len() > 256 {
         return Err(auth::error(StatusCode::BAD_REQUEST, "query_too_long"));
     }
     let mut page = Page::new(section, section, Some(&p));
+    page.suite(&s);
     page.query = q.q.clone();
     let section = section.to_owned();
     let page_number = q.page;
     let filter = if section == "staging" { "staged" } else { "" };
     let records = blocking(move || {
-        let db = s.db.connect()?;
         let packages = s.db.list_filtered(false, &q.q, q.page, filter)?;
         packages
             .into_iter()
             .map(|pkg| {
-                let state: String =
-                    db.query_row("SELECT state FROM packages WHERE id=?1", [&pkg.id], |r| {
-                        r.get(0)
-                    })?;
+                let state = s.db.package_state(&pkg.id)?;
                 Ok((pkg, state))
             })
             .collect::<anyhow::Result<Vec<_>>>()
@@ -259,9 +303,10 @@ async fn package_records(
     .await?;
     if records.len() == 50 {
         page.next = format!(
-            "/admin/{section}?page={}&q={}",
+            "/admin/{section}?page={}&q={}&suite={}",
             page_number.saturating_add(1),
-            percent_encoding::utf8_percent_encode(&page.query, percent_encoding::NON_ALPHANUMERIC)
+            percent_encoding::utf8_percent_encode(&page.query, percent_encoding::NON_ALPHANUMERIC),
+            page.suite
         );
     }
     page.records = records
@@ -331,15 +376,21 @@ async fn stage(
     App(s): App<State>,
     Extension(p): Extension<Principal>,
     Path(id): Path<String>,
+    Query(q): Query<api::Search>,
 ) -> api::Result<Redirect> {
+    let s = api::scoped(s, q.suite.as_deref())?;
+    let suite = s.db.suite().to_owned();
     api::stage_package(s, p, id).await?;
-    Ok(Redirect::to("/admin/staging"))
+    Ok(Redirect::to(&format!("/admin/staging?suite={suite}")))
 }
 async fn upload(
     App(s): App<State>,
     Extension(p): Extension<Principal>,
+    Query(q): Query<api::Search>,
     mut input: Multipart,
 ) -> api::Result<Redirect> {
+    let s = api::scoped(s, q.suite.as_deref())?;
+    let suite = s.db.suite().to_owned();
     p.operator()?;
     let permit = s
         .uploads
@@ -421,9 +472,16 @@ async fn upload(
     .await
     .map_err(|_| auth::error(StatusCode::REQUEST_TIMEOUT, "upload_timeout"))??;
     api::accept_upload(s, p, temp, permit).await?;
-    Ok(Redirect::to("/admin/uploads"))
+    Ok(Redirect::to(&format!("/admin/uploads?suite={suite}")))
 }
-async fn review(App(s): App<State>, Extension(p): Extension<Principal>) -> api::Result<Response> {
+async fn review(
+    App(s): App<State>,
+    Extension(p): Extension<Principal>,
+    Query(q): Query<api::Search>,
+) -> api::Result<Response> {
+    let s = api::scoped(s, q.suite.as_deref())?;
+    let mut page = Page::new("publish", "review publication", Some(&p));
+    page.suite(&s);
     let permit = s
         .publisher
         .clone()
@@ -434,7 +492,6 @@ async fn review(App(s): App<State>, Extension(p): Extension<Principal>) -> api::
         preview::preview(&s.config, &s.db)
     })
     .await?;
-    let mut page = Page::new("publish", "review publication", Some(&p));
     page.token = diff.token;
     page.stats = vec![
         ("packages added".into(), diff.added.len().to_string()),
@@ -493,9 +550,16 @@ struct Publish {
 async fn publish(
     App(s): App<State>,
     Extension(p): Extension<Principal>,
+    Query(q): Query<api::Search>,
     Form(input): Form<Publish>,
 ) -> api::Result<Redirect> {
-    queued(s, p, "publish", Some(input.review_token)).await
+    queued(
+        api::scoped(s, q.suite.as_deref())?,
+        p,
+        "publish",
+        Some(input.review_token),
+    )
+    .await
 }
 #[derive(Deserialize)]
 struct Rollback {
@@ -859,4 +923,52 @@ async fn generate_key(
     )
     .await?;
     Ok(Redirect::to("/admin/keys"))
+}
+
+async fn tokens(App(s): App<State>, Extension(p): Extension<Principal>) -> api::Result<Response> {
+    p.administrator()?;
+    let mut page = Page::new("tokens", "project API tokens", Some(&p));
+    page.suite(&s);
+    page.tokens = blocking(move || s.db.tokens()).await?;
+    Ok(page.response())
+}
+#[derive(Deserialize)]
+struct TokenForm {
+    name: String,
+    scopes: String,
+    suites: String,
+    days: u32,
+}
+async fn create_token(
+    App(s): App<State>,
+    Extension(p): Extension<Principal>,
+    Form(input): Form<TokenForm>,
+) -> api::Result<Response> {
+    p.administrator()?;
+    let input = xxc_aptd_core::tokens::CreateToken {
+        name: input.name,
+        scopes: input.scopes.split_whitespace().map(str::to_owned).collect(),
+        suites: input.suites.split_whitespace().map(str::to_owned).collect(),
+        days: input.days,
+    };
+    let actor = p.actor.clone();
+    let (token, secret) = blocking(move || s.db.create_token(&s.config, &actor, input)).await?;
+    let mut page = Page::new("token-created", "save your project token", Some(&p));
+    page.message="This credential is shown once. Save it in your project's protected CI secret store. It cannot be recovered; revoke it and create another if lost.".into();
+    page.token = secret.to_string();
+    page.details = vec![
+        ("token ID".into(), token.id),
+        ("scopes".into(), token.scopes.join(" ")),
+        ("suites".into(), token.suites.join(" ")),
+    ];
+    Ok(page.response())
+}
+async fn revoke_token(
+    App(s): App<State>,
+    Extension(p): Extension<Principal>,
+    Path(id): Path<String>,
+) -> api::Result<Redirect> {
+    p.administrator()?;
+    blocking(move || s.db.revoke_token(&p.actor, &id)).await?;
+    Ok(Redirect::to("/admin/tokens"))
 }

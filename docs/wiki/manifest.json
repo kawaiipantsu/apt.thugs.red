@@ -1,7 +1,9 @@
 {
   "Administration.md": "ADMINISTRATION.md",
+  "Analytics.md": "ANALYTICS.md",
   "Api.md": "API.md",
   "Architecture.md": "ARCHITECTURE.md",
+  "Automation.md": "AUTOMATION.md",
   "Backup-Restore.md": "BACKUP-RESTORE.md",
   "Configuration.md": "CONFIGURATION.md",
   "Debian-Packaging.md": "DEBIAN-PACKAGING.md",

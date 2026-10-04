@@ -21,7 +21,8 @@ workflow and a human-friendly public interface.
 
 **Development status: 0.1.0.** Signed binary repositories, Unix administration,
 the public browser and authenticated web administration are implemented. Local
-users, roles, reviewed publication and session revocation are supported.
+users, roles, project API tokens, multiple suites, reviewed publication, traffic
+statistics and a public developer guide are supported.
 Automated retention/refresh, managed key controls, package removal and production
 migration acceptance remain on the [roadmap](docs/ROADMAP.md).
 
@@ -153,3 +154,14 @@ verified outbound HTTPS. For direct trusted-network testing, see the
 
 [Remote signing](docs/SIGNING.md) keeps OpenPGP private keys in XXC Trust and
 verifies returned APT signatures locally before atomic publication.
+
+## Project publishing and release channels
+
+Administrators can create scoped, expiring project credentials in **API tokens**.
+CI jobs upload, stage, review and publish through the private API. Suites such as
+`nightly`, `development` and `production` have independent package selections.
+See [automation](docs/AUTOMATION.md), [traffic statistics](docs/ANALYTICS.md) and
+[the /admin proxy example](docs/REVERSE-PROXY.md).
+
+Public integration documentation: **[apt.thugs.red/api](https://apt.thugs.red/api)**.
+Developers and coding agents can also fetch `/api/guide.md` and `/api/openapi.json`.

@@ -22,6 +22,9 @@ Public Host must match that origin, the bind address or loopback.
 *max_upload_bytes*: 1 byte to 16 GiB; default 2147483648.
 *upload_timeout_seconds*: 1 to 3600, default 900.
 *max_concurrent_uploads*: 1 to 32, default 2.
+*trusted_proxies*: up to 64 CIDRs, default empty. Only these immediate peers may
+supply X-Forwarded-For for traffic statistics. Zero-prefix networks are rejected.
+Forwarded identity headers never grant authentication.
 
 # PATHS
 
@@ -38,6 +41,10 @@ included automatically in each binary index. The first component receives upload
 *not_automatic*, *but_automatic_upgrades*: Release policy booleans.
 *valid_until_seconds*: 3600 to 31536000, default 1209600.
 *acquire_by_hash*: must be true in this release.
+*suites*: optional list of up to 32 unique suite names including suite. Empty
+means only the default suite. Additional suites use their name as codename.
+Components, architectures, signer and Release policy are shared. Published
+suites cannot be silently removed; archive migration is required.
 
 # SIGNING
 
@@ -79,7 +86,16 @@ exactly. Forwarded identity and client-IP headers are ignored.
 *login_max_attempts*: 1..100, default 10 per account/window; immediate peer IP
 allowance is five times this limit.
 *max_sessions_per_user*: 1..32, default 8; excess logins evict oldest sessions.
-Cookies are Secure if either admin or public external_url uses HTTPS.
+Administrative cookies are Secure when admin external_url uses HTTPS. The public
+external_url and proxy headers do not change administrative cookie security.
+
+# ANALYTICS
+
+*enabled*: collect private aggregate public GET traffic, default true.
+*retention_days*: 1..365, default 90. Raw client addresses, search queries,
+cookies and user agents are not stored. Keyed address hashes estimate clients.
+The admin dashboard offers 7/30/90-day windows and excludes upstream cache hits.
+Changes require restart.
 
 # XXC TRUST
 

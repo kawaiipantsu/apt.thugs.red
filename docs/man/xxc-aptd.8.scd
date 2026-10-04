@@ -21,10 +21,20 @@ HTTP listener and an authorized Unix management socket. TLS belongs to an
 upstream reverse proxy. Configuration is never rewritten during normal operation.
 
 Default public listener: 127.0.0.1:8088. Default administrative listener:
-127.0.0.1:8089. Administrative HTTP requires a local user session and role.
+127.0.0.1:8089. Administrative HTTP requires a local user session and role, or
+a scoped project token on the supported automation endpoints.
 Create the first account with *xxc-apt-cli user add* --role administrator.
 Configure admin.external_url before proxying /admin/login.
 Use *xxc-apt-cli*(1) through /run/xxc-aptd/admin.sock.
+
+# PUBLIC API GUIDE
+
+The public /api page documents project integration: credentials, suites, raw
+Debian uploads, staging, publication review and asynchronous job results.
+/api/guide.md provides the same guide as Markdown. /api/openapi.json provides
+the OpenAPI reference, and /api/reference.md provides the full management guide.
+Documentation accepts GET/HEAD without authentication. Management operations
+remain on the private listener or Unix socket; /api/v1 is not a public API mount.
 
 # INITIALIZATION
 

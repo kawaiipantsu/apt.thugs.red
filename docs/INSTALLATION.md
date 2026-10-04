@@ -87,8 +87,9 @@ xxc-apt-cli status
 ```
 
 Open the public origin and the administrative origin plus `/admin/`. Both URLs
-must use HTTP for direct HTTP cookie testing: a configured HTTPS origin enables
-Secure cookies. Bind addresses and external origins have different purposes;
+can be configured independently: an HTTPS admin origin enables Secure admin
+cookies, while the public origin can use its own HTTPS reverse proxy. Bind
+addresses and external origins have different purposes;
 `0.0.0.0` is never a browser URL. Authentication, Host checks and CSRF stay
 mandatory. Limit access through network policy; normal deployment uses the
 TLS reverse proxy. IPv6 `[::]:PORT` is also supported with the same admin opt-in.

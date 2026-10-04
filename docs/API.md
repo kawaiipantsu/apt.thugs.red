@@ -57,8 +57,12 @@ These endpoints exist only on the admin TCP listener:
 5. `POST /api/v1/auth/logout` revokes that session and expires the cookie; CSRF and
    Origin checks still apply.
 
-The browser UI uses the same accounts and services. There are no bearer tokens,
-CORS allowances or trusted identity headers. Login rate limits use the immediate
+With an HTTPS `admin.external_url`, the session cookie is `__Host-xxc-session`
+with Secure; explicit HTTP administration uses `xxc-session`. The public origin
+and forwarding headers cannot change that choice.
+
+The browser UI uses the same accounts and services. Project bearer tokens are
+documented below; there are no CORS allowances or trusted identity headers. Login rate limits use the immediate
 peer address. Do not put passwords or session credentials in URLs, command-line
 arguments, logs or public examples. TLS remains the reverse proxy's responsibility.
 Administrative `/healthz` and `/readyz` require a viewer session and currently
@@ -132,3 +136,50 @@ There is no private export/import, revoke, decrypt or arbitrary-payload signing
 endpoint. Operators use the existing reviewed repository publish endpoint;
 `signing.backend=xxc-trust` selects the remote signer. GPG verifies returned
 artifacts and pinned fingerprints before publication. See [SIGNING.md](SIGNING.md).
+
+## Automation, suites and analytics
+
+The same API is available under `/admin/api/v1` on the private TCP listener for
+path proxies. Original `/api/v1` paths and the Unix transport remain supported.
+The public listener has no management API mount. See [AUTOMATION.md](AUTOMATION.md) for an
+executable CI example and bearer token constraints.
+
+| Endpoint | Behavior |
+| --- | --- |
+| GET /api/v1/suites | Configured suites (filtered to token permissions) and primary suite |
+| GET /api/v1/tokens | Administrator-only metadata, never digests or secret values |
+| POST /api/v1/tokens | Administrator-only `{name, scopes, suites, days}`; returns `{token, secret}` once |
+| POST /api/v1/tokens/{id}/revoke | Administrator-only immediate revocation of new requests |
+| GET /api/v1/analytics?days=30 | Viewer/session or Unix; 7/30/90-day private traffic aggregates |
+
+Package list/show, uploads, stage, diff and publish accept `?suite=NAME`. Omission
+uses the primary suite. The query parameter is the sole source of suite selection;
+publish JSON remains `{review_token}`. A diff now includes `suite`. Unknown or
+duplicate suite values fail. Review digests bind suite, selection, current generation
+and signing/repository configuration. Whole-generation rollback affects every suite.
+Tokens can see only jobs submitted with the same token identity, and cannot call
+rollback, verification, reindex, config, audit, analytics, user or key routes.
+
+Token permissions are `read`, `upload`, `stage`, `publish`; suites are an explicit
+nonempty allowlist. Creation accepts 1–365 days. Auth uses Authorization: Bearer,
+never URL parameters. Cookies alongside Authorization are rejected. Session auth
+retains Origin/CSRF requirements; explicit bearer auth has no CSRF requirement.
+Token responses carry no-store. Revocation cannot cancel already accepted jobs.
+
+
+## Public documentation URLs
+
+`GET /api` serves the developer guide, linked from public navigation and sitemap.
+`/api/` redirects to `/api`. The same canonical automation text is downloadable
+from `/api/guide.md`; `/api/openapi.json` serves this repository's OpenAPI file;
+`/api/reference.md` serves the full canonical management reference. All accept
+GET/HEAD without credentials, return no-cache and the usual security headers,
+and contain no runtime admin origin, proxy addresses or credential values.
+They cannot accept uploads or dispatch management requests.
+
+The OpenAPI servers are public deployment examples. Integrators must confirm the
+admin API base with the operator. Origin and CSRF parameters apply to session
+authentication, not explicit bearer requests. Publishing response schemas cover
+packages, suite lists, selection previews, accepted jobs, job state and errors.
+The automation test executes the exact shell example downloaded from the guide
+and verifies that its policy guard rejects unrelated staged additions.

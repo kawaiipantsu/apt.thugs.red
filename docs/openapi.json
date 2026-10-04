@@ -3,11 +3,16 @@
   "info": {
     "title": "XXC-APTD management",
     "version": "0.1.0",
-    "description": "Unix socket: filesystem administrator authority. Administrative HTTP: local session, RBAC, exact Origin and CSRF for mutations. Public HTTP never serves these endpoints."
+    "description": "Unix socket: filesystem administrator authority. Administrative HTTP: local session, RBAC, exact Origin and CSRF for mutations. Public HTTP never serves these endpoints. Scoped project bearer tokens authorize only explicit publishing routes and suites. /admin is an equivalent private TCP API prefix."
   },
   "servers": [
     {
-      "url": "http://localhost"
+      "url": "https://apt.thugs.red/admin",
+      "description": "Example path proxy. Confirm the administrative API origin with the operator; public /api is documentation only."
+    },
+    {
+      "url": "https://admin.example.invalid",
+      "description": "Example dedicated admin origin; replace with the operator-provided value. Paths below already include /api/v1."
     }
   ],
   "paths": {
@@ -23,6 +28,13 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
               }
             }
           },
@@ -48,8 +60,27 @@
             "$ref": "#/components/responses/Error429"
           }
         },
-        "x-minimum-role": "viewer"
-      }
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "read"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/health": {
       "get": {
@@ -104,6 +135,13 @@
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
               }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageList"
+                }
+              }
             }
           },
           "400": {
@@ -146,8 +184,27 @@
             }
           }
         ],
-        "x-minimum-role": "viewer"
-      }
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "read"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/packages/{id}": {
       "get": {
@@ -161,6 +218,13 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Package"
+                }
               }
             }
           },
@@ -197,8 +261,27 @@
             }
           }
         ],
-        "x-minimum-role": "viewer"
-      }
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "read"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/uploads": {
       "get": {
@@ -212,6 +295,13 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageList"
+                }
               }
             }
           },
@@ -255,7 +345,16 @@
             }
           }
         ],
-        "x-minimum-role": "viewer"
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "read"
       },
       "post": {
         "summary": "uploads",
@@ -268,6 +367,13 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Package"
+                }
               }
             }
           },
@@ -294,12 +400,21 @@
           },
           "429": {
             "$ref": "#/components/responses/Error429"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408"
           }
         },
         "requestBody": {
           "required": true,
           "content": {
             "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/vnd.debian.binary-package": {
               "schema": {
                 "type": "string",
                 "format": "binary"
@@ -315,8 +430,27 @@
             "$ref": "#/components/parameters/Csrf"
           }
         ],
-        "x-minimum-role": "operator"
-      }
+        "x-minimum-role": "operator",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "upload"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/repository/generations": {
       "get": {
@@ -371,6 +505,13 @@
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
               }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobList"
+                }
+              }
             }
           },
           "400": {
@@ -395,8 +536,28 @@
             "$ref": "#/components/responses/Error429"
           }
         },
-        "x-minimum-role": "viewer"
-      }
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "description": "Lookup is bounded to the latest 100 archive jobs. Project tokens see only jobs belonging to the same token. A completed job may later fall outside this window.",
+        "x-project-scope": "read"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/jobs/{id}": {
       "get": {
@@ -410,6 +571,13 @@
               },
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
               }
             }
           },
@@ -446,8 +614,28 @@
             }
           }
         ],
-        "x-minimum-role": "viewer"
-      }
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "description": "Lookup is bounded to the latest 100 archive jobs. Project tokens see only jobs belonging to the same token. A completed job may later fall outside this window.",
+        "x-project-scope": "read"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/audit": {
       "get": {
@@ -542,6 +730,13 @@
               "Cache-Control": {
                 "$ref": "#/components/headers/NoStore"
               }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageResult"
+                }
+              }
             }
           },
           "400": {
@@ -583,8 +778,27 @@
             "$ref": "#/components/parameters/Csrf"
           }
         ],
-        "x-minimum-role": "operator"
-      }
+        "x-minimum-role": "operator",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "stage"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/repository/publish": {
       "post": {
@@ -648,8 +862,27 @@
             "$ref": "#/components/parameters/Csrf"
           }
         ],
-        "x-minimum-role": "operator"
-      }
+        "x-minimum-role": "operator",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "publish"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/repository/verify": {
       "post": {
@@ -876,8 +1109,27 @@
             "$ref": "#/components/responses/Error429"
           }
         },
-        "x-minimum-role": "viewer"
-      }
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "read"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
     },
     "/api/v1/users": {
       "get": {
@@ -1995,6 +2247,307 @@
           }
         ]
       }
+    },
+    "/api/v1/suites": {
+      "get": {
+        "summary": "List configured suites filtered to token authorization",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/NoStore"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuiteList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          }
+        },
+        "x-minimum-role": "viewer",
+        "security": [
+          {
+            "projectToken": []
+          },
+          {
+            "SessionCookie": []
+          }
+        ],
+        "x-project-scope": "read"
+      },
+      "parameters": [
+        {
+          "name": "suite",
+          "in": "query",
+          "schema": {
+            "type": "string"
+          },
+          "description": "Configured suite; default repository.suite. Required when token lacks access to default."
+        }
+      ]
+    },
+    "/api/v1/analytics": {
+      "get": {
+        "summary": "Private aggregate public traffic; days=7,30,90; excludes project tokens",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/NoStore"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          }
+        },
+        "x-minimum-role": "viewer",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                7,
+                30,
+                90
+              ],
+              "default": 30
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/tokens": {
+      "get": {
+        "summary": "Administrator token metadata or one-time credential creation",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/NoStore"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          }
+        },
+        "x-minimum-role": "administrator"
+      },
+      "post": {
+        "summary": "Administrator token metadata or one-time credential creation",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/NoStore"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          }
+        },
+        "x-minimum-role": "administrator",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "scopes",
+                  "suites",
+                  "days"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "scopes": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "upload",
+                        "stage",
+                        "publish"
+                      ]
+                    }
+                  },
+                  "suites": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 32,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 365
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tokens/{id}/revoke": {
+      "post": {
+        "summary": "Administrator revocation",
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "headers": {
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Cache-Control": {
+                "$ref": "#/components/headers/NoStore"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          }
+        },
+        "x-minimum-role": "administrator"
+      },
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ]
     }
   },
   "components": {
@@ -2003,7 +2556,12 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "__Host-xxc-session",
-        "description": "HTTP only. For isolated all-HTTP development the name is xxc-session. Socket requests authenticate through filesystem permissions."
+        "description": "Admin HTTP interface only. When admin.external_url uses HTTPS, the cookie is __Host-xxc-session with Secure. Explicit HTTP administration uses xxc-session, independently of the public origin or proxy headers. Socket requests authenticate through filesystem permissions."
+      },
+      "projectToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "One-time project token with explicit scope and suite allowlists"
       }
     },
     "schemas": {
@@ -2391,6 +2949,9 @@
           },
           "size_delta": {
             "type": "integer"
+          },
+          "suite": {
+            "type": "string"
           }
         },
         "required": [
@@ -2402,7 +2963,8 @@
           "downgrades",
           "architectures_added",
           "architectures_removed",
-          "size_delta"
+          "size_delta",
+          "suite"
         ]
       },
       "TrustAuthority": {
@@ -2750,6 +3312,141 @@
             "type": "string"
           }
         }
+      },
+      "PackageList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "packages"
+        ],
+        "properties": {
+          "packages": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/Package"
+            }
+          }
+        }
+      },
+      "StageResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "staged"
+        ],
+        "properties": {
+          "staged": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SuiteList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "default",
+          "suites"
+        ],
+        "properties": {
+          "default": {
+            "type": "string"
+          },
+          "suites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "packages",
+          "staged",
+          "administrative_http",
+          "generation"
+        ],
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "packages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "staged": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "administrative_http": {
+            "type": "string",
+            "enum": [
+              "authentication_required",
+              "disabled"
+            ]
+          },
+          "generation": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "state",
+          "created",
+          "finished",
+          "message"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "created": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "JobList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "jobs"
+        ],
+        "properties": {
+          "jobs": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/Job"
+            }
+          }
+        }
       }
     },
     "headers": {
@@ -2912,6 +3609,24 @@
             }
           }
         }
+      },
+      "Error408": {
+        "description": "Upload deadline exceeded",
+        "headers": {
+          "X-Request-ID": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Cache-Control": {
+            "$ref": "#/components/headers/NoStore"
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
       }
     },
     "parameters": {
@@ -2919,7 +3634,7 @@
         "in": "header",
         "name": "Origin",
         "required": false,
-        "description": "Required on HTTP; must equal admin.external_url. Not required on Unix socket.",
+        "description": "Required for session-authenticated HTTP mutations; must equal admin.external_url. Omit for project bearer auth or Unix socket.",
         "schema": {
           "type": "string"
         }
@@ -2928,7 +3643,7 @@
         "in": "header",
         "name": "X-CSRF-Token",
         "required": false,
-        "description": "Required on HTTP mutations; obtain from login/session. Not required on socket.",
+        "description": "Required for session-authenticated HTTP mutations; obtain from login/session. Omit for project bearer auth or Unix socket.",
         "schema": {
           "type": "string"
         }
@@ -2939,5 +3654,15 @@
     {
       "SessionCookie": []
     }
-  ]
+  ],
+  "externalDocs": {
+    "description": "Public developer guide and executable CI example",
+    "url": "https://apt.thugs.red/api"
+  },
+  "x-public-documentation": {
+    "html": "/api",
+    "markdown": "/api/guide.md",
+    "openapi": "/api/openapi.json",
+    "management-reference": "/api/reference.md"
+  }
 }

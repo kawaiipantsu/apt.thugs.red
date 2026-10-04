@@ -11,6 +11,9 @@ repository_prefix = "/repo"
 max_upload_bytes = 2147483648
 upload_timeout_seconds = 900
 max_concurrent_uploads = 2
+# Immediate peers allowed to supply X-Forwarded-For for analytics only.
+# Use the actual proxy CIDRs locally; empty means ignore forwarding headers.
+trusted_proxies = []
 
 [paths]
 repository = "/var/lib/xxc-aptd/repository"
@@ -25,6 +28,9 @@ runtime = "/run/xxc-aptd"
 origin = "THUGS(red)"
 label = "THUGS(red)"
 suite = "zerotrust"
+# Empty preserves the default suite only. An explicit list must include it.
+# Example: ["zerotrust", "experimental", "development", "nightly", "production"]
+suites = []
 codename = "zerotrust"
 components = ["main"]
 architectures = ["amd64", "arm64"]
@@ -59,6 +65,7 @@ strict = false
 # Set this to the browser-facing administrator origin, including a nondefault port.
 # Authentication and CSRF cannot be disabled. Forwarded identity headers are ignored.
 [admin]
+# This origin's scheme determines Secure admin cookies, independently of server.external_url.
 enabled = true
 # Explicit opt-in for a wildcard or other non-loopback administrative bind.
 # Authentication, roles, CSRF and Host/Origin validation remain mandatory.
@@ -68,6 +75,10 @@ session_lifetime_seconds = 43200
 login_window_seconds = 900
 login_max_attempts = 10
 max_sessions_per_user = 8
+
+[analytics]
+enabled = true
+retention_days = 90
 
 # Optional X.509 inventory integration. Configure the actual endpoint locally.
 # Bearer tokens are read from systemd credentials, never from this file.

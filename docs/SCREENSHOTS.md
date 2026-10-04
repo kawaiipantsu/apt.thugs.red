@@ -1,7 +1,7 @@
 # Screenshot gallery
 
 XXC-APTD 0.1.0, captured from the running application using disposable packages,
-accounts and a local signing fixture. These images show the implemented interface;
+accounts, synthetic traffic and a local signing fixture. These images show the implemented interface;
 remaining features are listed in the [roadmap](ROADMAP.md).
 
 Desktop captures use a 1440-pixel viewport; mobile captures use 390 pixels.
@@ -33,6 +33,13 @@ Signed metadata remains available at its normal APT URL.
 
 ![Repository key and Deb822 setup instructions](screenshots/public-setup.png)
 
+### Developer API guide
+
+Public integration instructions, copyable examples and Markdown/OpenAPI downloads.
+The first viewport is shown; the full page includes endpoint, retry and coding-agent guidance.
+
+![Public API developer guide](screenshots/public-api.png)
+
 ## Administration
 
 ### Login and dashboard
@@ -40,6 +47,13 @@ Signed metadata remains available at its normal APT URL.
 | Local account login | Repository control |
 | --- | --- |
 | ![Empty admin login form](screenshots/admin-login.png) | ![Authenticated repository dashboard](screenshots/admin-dashboard.png) |
+
+### Project API tokens
+
+Administrators create expiring credentials with explicit permissions and suites.
+No token value is included in these captures.
+
+![Project API token management](screenshots/admin-tokens.png)
 
 ### Upload and review
 
@@ -63,3 +77,10 @@ explicit server configuration change.
 | Public home | Publication review |
 | --- | --- |
 | ![Public home at mobile width](screenshots/public-mobile.png) | ![Admin publication review at mobile width](screenshots/admin-mobile.png) |
+
+### Traffic on mobile
+
+Charts and rankings below use synthetic history in a disposable fixture database.
+The installed service records actual traffic only.
+
+![Responsive traffic dashboard](screenshots/admin-statistics-mobile.png)

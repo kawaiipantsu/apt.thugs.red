@@ -22,8 +22,12 @@ debversion = "0.5"
 fs2 = "0.4"
 futures-util = "0.3"
 httpdate = "1"
+http-body = "1"
+hmac = "0.12"
+ipnet = { version = "2", features = ["serde"] }
 libc = "0.2"
 percent-encoding = "2"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
 rpassword = "7"
 rusqlite = { version = "0.38", features = ["bundled", "backup"] }

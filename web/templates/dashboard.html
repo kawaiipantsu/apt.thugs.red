@@ -1,0 +1,40 @@
+<section class="analytics" aria-label="repository traffic">
+  <div class="analytics-heading"><div><p class="eyebrow">// archive telemetry</p><h2>the repository, in motion.</h2></div><nav class="periods" aria-label="statistics period">
+    <a href="/admin/?days=7&amp;metric={{ d.metric }}"{% if d.days == 7 %} aria-current="true"{% endif %}>7 days</a>
+    <a href="/admin/?days=30&amp;metric={{ d.metric }}"{% if d.days == 30 %} aria-current="true"{% endif %}>30 days</a>
+    <a href="/admin/?days=90&amp;metric={{ d.metric }}"{% if d.days == 90 %} aria-current="true"{% endif %}>90 days</a>
+  </nav></div>
+  {% if !d.enabled %}<p class="note">Traffic collection is disabled. Previously collected statistics are shown.</p>{% endif %}
+  {% if d.dropped > 0 %}<p class="note">{{ d.dropped }} observations were dropped since startup while the statistics queue or database was unavailable.</p>{% endif %}
+  <div class="metric-grid">{% for metric in d.metrics %}<article class="metric {{ metric.class }}"><h3>{{ metric.name }}</h3><p class="metric-value">{{ metric.value }}</p><p class="metric-note">{{ metric.note }}</p><svg class="sparkline" viewBox="0 0 220 56" aria-hidden="true"><path d="{{ metric.line }}"/></svg></article>{% endfor %}</div>
+  <div class="traffic-grid">
+    <section class="chart-panel"><div class="section-title"><h3>activity / UTC</h3><span>{{ d.first }} — {{ d.last }}</span></div>
+      <nav class="chart-tabs" aria-label="chart measure">
+        <a href="/admin/?days={{ d.days }}&amp;metric=downloads"{% if d.metric == "downloads" %} aria-current="true"{% endif %}>downloads</a>
+        <a href="/admin/?days={{ d.days }}&amp;metric=requests"{% if d.metric == "requests" %} aria-current="true"{% endif %}>requests</a>
+        <a href="/admin/?days={{ d.days }}&amp;metric=clients"{% if d.metric == "clients" %} aria-current="true"{% endif %}>clients</a>
+        <a href="/admin/?days={{ d.days }}&amp;metric=bytes"{% if d.metric == "bytes" %} aria-current="true"{% endif %}>bytes</a>
+      </nav>
+      <p class="chart-scale">daily {{ d.label }} <span>peak {{ d.maximum }}</span></p>
+      <div class="interactive-chart" tabindex="0" role="group" aria-label="Daily {{ d.label }} chart. Use left and right arrow keys to inspect a day, or expand the daily values table below.">
+        <svg viewBox="0 0 1000 220" class="activity-chart" role="img" aria-label="Daily {{ d.label }} from {{ d.first }} to {{ d.last }}">
+          <path class="chart-grid" d="M 20 20 H 980 M 20 80 H 980 M 20 140 H 980 M 20 200 H 980"/>
+          <path class="chart-area" d="{{ d.area }}"/><path class="chart-line" d="{{ d.line }}"/>
+          {% for point in d.points %}<circle class="chart-point" cx="{{ point.x }}" cy="{{ point.y }}" r="5" data-label="{{ point.label }}"><title>{{ point.label }}</title></circle>{% endfor %}
+        </svg>
+        <p class="chart-readout" role="status" aria-live="polite">{{ d.label }} · move over the chart or use arrow keys</p>
+      </div>
+      <div class="chart-dates"><span>{{ d.first }}</span><span>{{ d.last }}</span></div>
+      <details class="chart-data"><summary>daily values</summary><div class="table-scroll"><table><thead><tr><th scope="col">date / UTC</th><th scope="col">downloads</th><th scope="col">requests</th><th scope="col">clients</th><th scope="col">bytes served</th></tr></thead><tbody>{% for row in d.rows %}<tr><td>{{ row.date }}</td><td>{{ row.downloads }}</td><td>{{ row.requests }}</td><td>{{ row.clients }}</td><td>{{ row.bytes }}</td></tr>{% endfor %}</tbody></table></div></details>
+    </section>
+    <section class="mix-panel"><h3>traffic mix</h3><div class="traffic-donut"><svg viewBox="0 0 120 120" role="img" aria-label="Request types, with counts listed below"><circle class="donut-track" cx="60" cy="60" r="45"/>{% for segment in d.segments %}<circle class="donut-segment {{ segment.class }}" cx="60" cy="60" r="45" pathLength="100" stroke-dasharray="{{ segment.dash }}" stroke-dashoffset="{{ segment.offset }}"/>{% endfor %}</svg><div><strong>{{ d.total_requests }}</strong><span>requests</span></div></div>
+      <ul class="mix-legend">{% for segment in d.segments %}<li class="{{ segment.class }}"><span>{{ segment.name }}</span><strong>{{ segment.requests }}</strong></li>{% endfor %}</ul>
+      <dl class="traffic-health"><div><dt>range responses</dt><dd>{{ d.ranges }}</dd></div><div><dt>HTTP errors</dt><dd>{{ d.errors }}</dd></div><div><dt>interrupted streams</dt><dd>{{ d.interrupted }}</dd></div></dl>
+    </section>
+  </div>
+  <div class="rankings-grid">
+    <section class="ranking-panel"><div class="section-title"><h3>popular packages</h3><span>full downloads</span></div>{% if d.packages.is_empty() %}<p class="empty">Package traffic will appear after clients request published .deb files.</p>{% else %}<ol class="popular-list">{% for package in d.packages %}<li><div><a href="{{ d.public_origin }}/packages/{{ package.name }}">{{ package.name }}</a><strong>{{ package.downloads }}</strong></div><svg viewBox="0 0 100 3" preserveAspectRatio="none" aria-hidden="true"><rect class="rank-track" width="100" height="3"/><rect class="rank-value" width="{{ package.width }}" height="3"/></svg><p>{{ package.requests }} requests · {{ package.bytes }}</p></li>{% endfor %}</ol>{% endif %}</section>
+    <section class="ranking-panel"><div class="section-title"><h3>most requested assets</h3><span>requests</span></div>{% if d.assets.is_empty() %}<p class="empty">Repository metadata, package files and UI assets will appear here.</p>{% else %}<ol class="popular-list asset-list">{% for asset in d.assets %}<li><div><span>{{ asset.name }}</span><strong>{{ asset.requests }}</strong></div><svg viewBox="0 0 100 3" preserveAspectRatio="none" aria-hidden="true"><rect class="rank-track" width="100" height="3"/><rect class="rank-value" width="{{ asset.width }}" height="3"/></svg><p>{{ asset.bytes }}</p></li>{% endfor %}</ol>{% endif %}</section>
+  </div>
+  <p class="analytics-footnote">Origin traffic only; upstream cache hits are not visible. Client counts are estimates, include bots, and can combine users behind NAT. Full downloads exclude range responses and interrupted streams. Statistics are retained for {{ d.retention }} days and refresh on page load.</p>
+</section>

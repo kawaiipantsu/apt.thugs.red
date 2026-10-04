@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>API guide · {{ site }}</title><meta name="description" content="Integrate XXC-APTD with your build pipeline: project tokens, suite selection, package uploads, reviewed publication and job tracking.">
+<link rel="stylesheet" href="/static/site.css"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="alternate" type="text/markdown" href="/api/guide.md" title="API guide in Markdown"><script src="/static/site.js" defer></script></head>
+<body><a class="skip" href="#main">skip to content</a><header><a class="brand" href="/">[THUGS<span>(red)</span>]<b>XXC / APTD</b></a>{% include "public-nav.html" %}</header>
+<main id="main" class="api-guide"><div class="eyebrow">root@apt:~$ <span>man xxc-api</span></div><h1>build. stage. publish.</h1><p class="intro">The integration guide for developers, CI pipelines and coding agents. Publish Debian packages through a scoped, versioned API.</p>
+<div class="doc-downloads"><a class="button" href="/api/guide.md">Markdown guide ↓</a><a class="button secondary" href="/api/openapi.json">OpenAPI JSON ↓</a><span class="tag">API v1 / XXC-APTD {{ version }}</span></div>
+<aside class="note">Documentation is public. Package uploads and publishing use the authenticated administrative API. Get its base URL and a project token from the repository operator.</aside>
+<div class="doc-layout"><nav class="doc-toc" aria-label="API guide contents"><h2>on this page</h2>{% for section in guide.sections %}<a href="#{{ section.id }}">{{ section.title }}</a>{% endfor %}<a href="/api/reference.md">full management reference ↗</a></nav>
+<article class="doc-content" aria-label="API integration guide">{{ guide.html|safe }}</article></div>
+</main><footer><div><strong>XXC-APTD</strong> / {{ version }}<p>A THUGS(red) project by Kawaiipantsu.</p></div><a href="{{ main_site }}">thugs.red ↗</a><a href="/">repository home →</a></footer><div role="status" id="copy-status" aria-live="polite"></div></body></html>

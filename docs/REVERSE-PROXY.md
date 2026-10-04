@@ -4,6 +4,33 @@ The daemon always serves HTTP. TLS, certificates and HSTS belong to the proxy.
 These examples use the intentionally public project domains from the specification.
 Replace deployment-specific certificate paths locally; do not commit credentials.
 
+## Configure the public origin first
+
+On the repository server, update the existing `[server]` section in
+`/etc/xxc/aptd.conf` before switching proxy traffic:
+
+```toml
+[server]
+external_url = "https://apt.thugs.red"
+# Keep the existing listener, socket and upload settings.
+```
+
+Validate and restart as root:
+
+```sh
+xxc-aptd config check
+systemctl restart xxc-aptd
+curl -I -H 'Host: apt.thugs.red' http://127.0.0.1:8088/static/site.js
+curl -I https://apt.thugs.red/static/site.js
+```
+
+The script response must be 200 with `Content-Type: text/javascript`. If it is
+400 with `text/html`, check `server.external_url` and the proxy's Host header.
+The browser's subsequent nosniff/MIME error is caused by the HTML error response;
+keep `X-Content-Type-Options: nosniff` enabled. The same origin controls generated
+APT source definitions and setup commands. The separate admin origin and its
+cookie policy remain configured under `[admin]`.
+
 ## nginx public server
 
 ```nginx
@@ -86,3 +113,63 @@ and retain application RBAC. Never expose the raw administrative listener public
 
 The public daemon rejects unknown Host names. Preserve the configured external
 hostname as shown above; forwarded host headers cannot override this validation.
+
+## Public site and administration on one hostname
+
+Route the whole `/admin` namespace to port 8089. Keep that prefix intact: nginx
+`proxy_pass` must have no trailing slash; Caddy must use `handle`, not `handle_path`.
+Administrative scripts, CSS, favicon and JSON calls all live under that prefix.
+Keep both listeners separate inside the daemon.
+
+Once the proxy route is ready, set `[admin].external_url = "https://apt.thugs.red"`
+on the server, validate and restart. Do not append `/admin` to the origin.
+This enables Secure cookies and requires HTTPS Origin on browser mutations.
+Until the route is ready, retain the existing LAN origin for direct testing.
+Sessions use host-only cookies with Path=/; public handlers never interpret them.
+A separate admin hostname remains supported and provides stronger browser isolation.
+
+Add inside the public nginx server block above:
+
+```nginx
+location = /admin { return 308 /admin/; }
+location ^~ /admin/ {
+    proxy_pass http://127.0.0.1:8089;
+    proxy_set_header Host apt.thugs.red;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Remote-User "";
+    client_max_body_size 2g;
+    client_body_timeout 900s;
+    proxy_read_timeout 960s;
+    proxy_request_buffering off;
+    proxy_cache off;
+}
+```
+
+For Caddy, replace the public reverse_proxy block with:
+
+```caddyfile
+@admin path /admin /admin/*
+handle @admin {
+    request_body { max_size 2GB }
+    reverse_proxy 127.0.0.1:8089 {
+        header_up Host apt.thugs.red
+    }
+}
+handle {
+    reverse_proxy 127.0.0.1:8088 {
+        header_up Host apt.thugs.red
+    }
+}
+```
+
+Keep Authorization intact for project API tokens and never cache administrative
+responses. Apply mTLS/SSO controls at the proxy if required; automation clients must
+satisfy those controls too. Application sessions or scoped API tokens remain required.
+For a proxy on another machine, replace loopback upstreams with the private backend
+address, restrict network access, and configure the actual peer CIDRs under
+`server.trusted_proxies` in aptd.conf. Never use a broad network merely to make
+forwarding work. At the Internet-facing proxy, overwrite incoming X-Forwarded-For
+with the verified peer address as above. In a controlled proxy chain, append only
+after configuring that proxy's own trusted peers. The daemon walks from the
+rightmost trusted peer to the first untrusted client address for analytics only.

@@ -5,7 +5,7 @@ deployment is gated on the outstanding security work in ROADMAP.md.
 
 Public and administrative HTTP use separate routers and ports. The public
 listener cannot dispatch management API operations. Administrative HTTP requires
-a local session and an allowed role. Unix socket access confers administrator authority;
+a local session and an allowed role, or a scoped project token on its API allowlist. Unix socket access confers administrator authority;
 give membership of its group only to trusted operators. Proxy headers do not
 authenticate requests. TLS termination belongs exclusively to nginx or Caddy.
 
@@ -41,12 +41,14 @@ and a per-user cap. A security revision prevents a concurrent password reset
 from completing an obsolete login. Account changes revoke stored sessions.
 Requests already authorized before a change may complete.
 
-Login challenges are single-use and short-lived. HTTP mutations require a
+Login challenges are single-use and short-lived. Session-authenticated HTTP mutations require a
 same-origin CSRF token and the exact configured Origin. Cookies are HttpOnly,
-SameSite=Strict and Secure for HTTPS; no Domain attribute is used. The
+SameSite=Strict and Secure when the configured admin origin uses HTTPS; no Domain
+attribute is used. The public origin and forwarded headers cannot change
+administrative cookie security. The
 same-origin Referrer-Policy preserves browser Origin on ordinary form POSTs
-without sending referrers to other origins. No identity or client-IP forwarding
-headers are trusted. The public router never mounts login/session handlers.
+without sending referrers to other origins. Identity headers are never trusted. Explicitly configured proxy CIDRs may supply
+client addresses for analytics only; authentication and throttling use the immediate peer. The public router never mounts login/session handlers.
 
 Viewer, operator and administrator permission checks apply at the HTTP boundary
 and in mutation services. The socket installs an administrator principal only
@@ -96,3 +98,32 @@ Only administrators can inspect or generate remote keys. No endpoint signs
 arbitrary submitted content, rewrites the signer configuration or exports private
 material. Key generation does not activate or publish it. Audit records omit
 public user identity fields and upstream request/response bodies.
+
+## Project token boundary
+
+API secrets are returned once with no-store responses and stored only as SHA-256
+digests. Scope, suite, expiry and revocation are checked on every request. Browser
+cookies and bearer credentials cannot be combined. Bearer requests have no ambient
+browser authority; session CSRF remains mandatory. Tokens cannot retrieve private
+keys, manage users or create other tokens. Operators must protect CI secret files
+and avoid shell tracing. Already authorized uploads/jobs may finish after revocation.
+A publish token grants control over all staged changes in its allowed suites.
+See [AUTOMATION.md](AUTOMATION.md).
+
+Analytics uses private keyed IP hashes with bounded retention, no cookies or raw
+address storage. Hashes are pseudonymous and remain sensitive backup data. Its
+bounded queue can drop observations under load; it never holds up package downloads.
+
+Using one HTTPS origin for public pages and `/admin` shares a browser security
+origin. The public router ignores admin cookies and exposes no mutations. CSP,
+escaping and no-store administration responses remain required: public-origin XSS
+would still threaten a logged-in administrator. A separate admin hostname with
+mTLS provides a stronger browser isolation option.
+
+
+Public `/api` is a read-only documentation surface. Its Markdown/OpenAPI are
+compiled assets, not file paths supplied by clients. The HTML renderer escapes
+raw HTML and rejects active link schemes. The guide does not interpolate private
+listener addresses, credentials, proxy configuration or signing selections. It
+has no try-it console or credential input; integration requests go directly from
+the developer's client to the operator-provided administrative API.

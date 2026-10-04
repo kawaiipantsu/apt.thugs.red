@@ -67,3 +67,13 @@ request does not block package downloads, offline verification or local GPG
 publication. New remote signatures require the CA to be available. Inspect the
 structured error code and verify the credential, CA permissions, TLS root and
 network route. Restart after changing the loaded token. See [XXC-TRUST.md](XXC-TRUST.md).
+
+## Multiple channels and CI
+
+Use `--suite` on the CLI and select the suite in the admin workflow. Publication
+changes one channel; rollback restores all channels in the chosen generation.
+See [AUTOMATION.md](AUTOMATION.md) for restricted project credentials and
+[ANALYTICS.md](ANALYTICS.md) for traffic estimates and retention. SQLite upgrades
+create private recovery copies before adding suite memberships and token tables.
+Existing packages belong to the original default suite. Configuration remains
+file-based and changes require restart.

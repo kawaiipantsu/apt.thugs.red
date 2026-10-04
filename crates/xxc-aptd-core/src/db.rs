@@ -8,6 +8,8 @@ use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::PathBuf, time::Dura
 pub struct Database {
     path: PathBuf,
     audit: PathBuf,
+    default_suite: String,
+    scope: Option<String>,
 }
 
 impl Database {
@@ -15,11 +17,13 @@ impl Database {
         let db = Self {
             path: c.paths.database.clone(),
             audit: c.logging.audit_file.clone(),
+            default_suite: c.repository.suite.clone(),
+            scope: None,
         };
         let mut conn = db.connect()?;
         let version: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
         ensure!(
-            version <= 2,
+            version <= 4,
             "Database schema is newer than this binary; refusing downgrade"
         );
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -46,8 +50,68 @@ impl Database {
             tx.execute_batch(include_str!("../migrations/002_administration.sql"))?;
             tx.commit()?;
         }
+        if version < 3 {
+            if version > 0 {
+                let backup = db
+                    .path
+                    .with_extension(format!("pre-v3-{}.db", uuid::Uuid::new_v4()));
+                let file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&backup)?;
+                conn.backup("main", &backup, None)?;
+                file.sync_all()?;
+                fs::File::open(backup.parent().expect("database parent"))?.sync_all()?;
+            }
+            let tx = conn.transaction()?;
+            tx.execute_batch(include_str!("../migrations/003_analytics.sql"))?;
+            tx.commit()?;
+        }
+        if version < 4 {
+            if version > 0 {
+                let backup = db
+                    .path
+                    .with_extension(format!("pre-v4-{}.db", uuid::Uuid::new_v4()));
+                let file = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&backup)?;
+                conn.backup("main", &backup, None)?;
+                file.sync_all()?;
+                fs::File::open(backup.parent().expect("database parent"))?.sync_all()?;
+            }
+            let tx = conn.transaction()?;
+            tx.execute_batch(include_str!("../migrations/004_suites_tokens.sql"))?;
+            tx.execute("INSERT INTO package_suites(suite,package_id,state,active) SELECT ?1,id,state,active FROM packages", [&c.repository.suite])?;
+            tx.commit()?;
+        }
         conn.execute("UPDATE jobs SET state='failed',finished=?1,message='Interrupted by service restart' WHERE state='running'",[crate::repository::now()])?;
         Ok(db)
+    }
+    /// A suite view keeps shared package objects separate from publication membership.
+    pub fn for_suite(&self, suite: &str) -> Self {
+        let mut db = self.clone();
+        db.scope = Some(suite.into());
+        db
+    }
+    pub fn suite(&self) -> &str {
+        self.scope.as_deref().unwrap_or(&self.default_suite)
+    }
+    pub fn membership(&self, id: &str) -> Result<bool> {
+        Ok(self.connect()?.query_row(
+            "SELECT EXISTS(SELECT 1 FROM package_suites WHERE suite=?1 AND package_id=?2)",
+            params![self.suite(), id],
+            |r| r.get(0),
+        )?)
+    }
+    pub fn package_state(&self, id: &str) -> Result<String> {
+        Ok(self.connect()?.query_row(
+            "SELECT state FROM package_suites WHERE suite=?1 AND package_id=?2",
+            params![self.suite(), id],
+            |r| r.get(0),
+        )?)
     }
     pub fn connect(&self) -> Result<Connection> {
         let c = Connection::open(&self.path)?;
@@ -57,6 +121,9 @@ impl Database {
         Ok(c)
     }
     pub fn get(&self, id: &str) -> Result<Option<Package>> {
+        if self.scope.is_some() && !self.membership(id)? {
+            return Ok(None);
+        }
         let value: Option<String> = self
             .connect()?
             .query_row("SELECT metadata FROM packages WHERE id=?1", [id], |r| {
@@ -84,22 +151,28 @@ impl Database {
             .map(|x| format!("\"{}\"", x.replace('"', "\"\"")))
             .collect::<Vec<_>>()
             .join(" AND ");
-        let sql = if query.trim().is_empty() {
-            "SELECT metadata FROM packages WHERE (?1=0 OR active=1) AND (?4='' OR state=?4) AND ?2=?2 ORDER BY name,version,architecture LIMIT 50 OFFSET ?3"
+        let sql = if self.scope.is_some() {
+            "SELECT p.metadata FROM packages p JOIN package_suites m ON p.id=m.package_id WHERE m.suite=?5 AND (?1=0 OR m.active=1) AND (?4='' OR m.state=?4) AND (?2='' OR p.id IN (SELECT id FROM package_search WHERE package_search MATCH ?2)) ORDER BY p.name,p.version,p.architecture LIMIT 50 OFFSET ?3"
         } else {
-            "SELECT metadata FROM packages WHERE (?1=0 OR active=1) AND (?4='' OR state=?4) AND id IN (SELECT id FROM package_search WHERE package_search MATCH ?2) ORDER BY name,version,architecture LIMIT 50 OFFSET ?3"
+            "SELECT metadata FROM packages WHERE (?1=0 OR active=1) AND (?4='' OR state=?4) AND (?2='' OR id IN (SELECT id FROM package_search WHERE package_search MATCH ?2)) AND ?5=?5 ORDER BY name,version,architecture LIMIT 50 OFFSET ?3"
         };
         let mut s = conn.prepare(sql)?;
         let rows = s.query_map(
-            params![public, term, i64::from(page.min(1_000_000)) * 50, state],
+            params![
+                public,
+                term,
+                i64::from(page.min(1_000_000)) * 50,
+                state,
+                self.suite()
+            ],
             |r| r.get::<_, String>(0),
         )?;
         rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
     }
     pub fn selected(&self) -> Result<Vec<Package>> {
         let c = self.connect()?;
-        let mut s=c.prepare("SELECT metadata FROM packages WHERE active=1 OR state='staged' ORDER BY name,version,architecture")?;
-        let rows = s.query_map([], |r| r.get::<_, String>(0))?;
+        let mut s=c.prepare("SELECT p.metadata FROM packages p JOIN package_suites m ON p.id=m.package_id WHERE m.suite=?1 AND (m.active=1 OR m.state='staged') ORDER BY p.name,p.version,p.architecture")?;
+        let rows = s.query_map([self.suite()], |r| r.get::<_, String>(0))?;
         rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
     }
     pub fn insert(&self, p: &Package) -> Result<String> {
@@ -117,6 +190,8 @@ impl Database {
                 hash == p.sha256,
                 "Conflicting package identity: identical name/version/architecture has different bytes"
             );
+            tx.execute("INSERT OR IGNORE INTO package_suites(suite,package_id,state) VALUES(?1,?2,'uploaded')",params![self.suite(),id])?;
+            tx.commit()?;
             return Ok(id);
         }
         tx.execute("INSERT INTO packages(id,name,version,architecture,sha256,state,metadata) VALUES(?1,?2,?3,?4,?5,'uploaded',?6)",params![p.id,p.name,p.version,p.architecture,p.sha256,serde_json::to_string(p)?])?;
@@ -124,14 +199,18 @@ impl Database {
             "INSERT INTO package_search(id,name,description) VALUES(?1,?2,?3)",
             params![p.id, p.name, p.description],
         )?;
+        tx.execute(
+            "INSERT INTO package_suites(suite,package_id,state) VALUES(?1,?2,'uploaded')",
+            params![self.suite(), p.id],
+        )?;
         tx.commit()?;
         Ok(p.id.clone())
     }
     pub fn stage(&self, id: &str) -> Result<()> {
         ensure!(
             self.connect()?.execute(
-                "UPDATE packages SET state='staged' WHERE id=?1 AND active=0",
-                [id]
+                "UPDATE package_suites SET state='staged' WHERE package_id=?1 AND suite=?2 AND active=0",
+                params![id,self.suite()]
             )? == 1,
             "Package missing or already published"
         );
@@ -202,7 +281,7 @@ impl Database {
             r.get(0)
         })?;
         let staged: i64 = c.query_row(
-            "SELECT count(*) FROM packages WHERE state='staged'",
+            "SELECT count(*) FROM package_suites WHERE state='staged'",
             [],
             |r| r.get(0),
         )?;
@@ -223,7 +302,7 @@ impl Database {
             action,
             "repository",
             "requested",
-            &json!({"job_id":id}),
+            &json!({"job_id":id,"suite":self.suite()}),
         )?;
         tx.commit()?;
         self.append_audit(&event);
@@ -249,7 +328,7 @@ impl Database {
             action,
             "repository",
             state,
-            &json!({"job_id":id}),
+            &json!({"job_id":id,"suite":self.suite()}),
         )?;
         tx.commit()?;
         self.append_audit(&event);

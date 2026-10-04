@@ -25,7 +25,25 @@ pub struct Manifest {
     pub suite: String,
     pub fingerprint: String,
     pub packages: Vec<Package>,
+    #[serde(default)]
+    pub suites: BTreeMap<String, Vec<Package>>,
     pub files: BTreeMap<String, String>,
+}
+impl Manifest {
+    pub fn suite_packages(&self, suite: &str) -> &[Package] {
+        if self.suites.is_empty() && suite == self.suite {
+            &self.packages
+        } else {
+            self.suites.get(suite).map(Vec::as_slice).unwrap_or(&[])
+        }
+    }
+    pub fn suite_names(&self) -> Vec<String> {
+        if self.suites.is_empty() {
+            vec![self.suite.clone()]
+        } else {
+            self.suites.keys().cloned().collect()
+        }
+    }
 }
 pub fn now() -> String {
     Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
@@ -140,7 +158,32 @@ pub fn publish(c: &Config, db: &Database, signer: &dyn Signer) -> Result<Manifes
         !c.signing.fingerprint.is_empty(),
         "No signing fingerprint configured"
     );
-    let packages = db.selected()?;
+    let previous = current(c)?;
+    if let Some(m) = &previous {
+        ensure!(
+            m.suite_names().iter().all(|s| c.repository.has_suite(s)),
+            "Removing a published suite requires an explicit migration"
+        );
+    }
+    let mut suites = BTreeMap::new();
+    for name in c.repository.suite_names() {
+        let packages = if name == db.suite() {
+            db.selected()?
+        } else {
+            previous
+                .as_ref()
+                .map(|m| m.suite_packages(&name).to_vec())
+                .unwrap_or_default()
+        };
+        suites.insert(name, packages);
+    }
+    let packages: Vec<Package> = suites
+        .values()
+        .flatten()
+        .map(|p| (p.id.clone(), p.clone()))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect();
     let id = uuid::Uuid::new_v4().to_string();
     let generations = c.paths.repository.join(".generations");
     let scratch = tempfile::Builder::new()
@@ -195,74 +238,83 @@ pub fn publish(c: &Config, db: &Database, signer: &dyn Signer) -> Result<Manifes
         stanzas.len() == packages.len(),
         "Metadata generator omitted packages"
     );
-    let suite = root.join("dists").join(&c.repository.suite);
-    fs::create_dir_all(&suite)?;
-    for component in &c.repository.components {
-        for architecture in c
-            .repository
-            .architectures
-            .iter()
-            .map(String::as_str)
-            .chain(std::iter::once("all"))
-        {
-            let index = suite.join(component).join(format!("binary-{architecture}"));
-            let bytes = stanzas
+    let r = &c.repository;
+    for (suite_name, members) in &suites {
+        let suite = root.join("dists").join(suite_name);
+        fs::create_dir_all(&suite)?;
+        for component in &c.repository.components {
+            for architecture in c
+                .repository
+                .architectures
                 .iter()
-                .filter(|(p, _)| {
-                    p.component == *component
-                        && (p.architecture == architecture || p.architecture == "all")
-                })
-                .map(|(_, s)| s.as_str())
-                .collect::<String>()
-                .into_bytes();
-            let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-            gz.write_all(&bytes)?;
-            let mut xz = xz2::write::XzEncoder::new(Vec::new(), 6);
-            xz.write_all(&bytes)?;
-            for (name, data) in [
-                ("Packages", bytes),
-                ("Packages.gz", gz.finish()?),
-                ("Packages.xz", xz.finish()?),
-            ] {
-                let path = index.join(name);
-                write(&path, &data)?;
-                let (_, sha256, sha512) = hash_file(&path)?;
-                for (algorithm, hash) in [("SHA256", sha256), ("SHA512", sha512)] {
-                    let by_hash = index.join("by-hash").join(algorithm);
-                    fs::create_dir_all(&by_hash)?;
-                    let object = by_hash.join(hash);
-                    if !object.exists() {
-                        fs::hard_link(&path, object)?;
+                .map(String::as_str)
+                .chain(std::iter::once("all"))
+            {
+                let index = suite.join(component).join(format!("binary-{architecture}"));
+                let bytes = stanzas
+                    .iter()
+                    .filter(|(p, _)| {
+                        members.iter().any(|m| m.id == p.id)
+                            && p.component == *component
+                            && (p.architecture == architecture || p.architecture == "all")
+                    })
+                    .map(|(_, s)| s.as_str())
+                    .collect::<String>()
+                    .into_bytes();
+                let mut gz =
+                    flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+                gz.write_all(&bytes)?;
+                let mut xz = xz2::write::XzEncoder::new(Vec::new(), 6);
+                xz.write_all(&bytes)?;
+                for (name, data) in [
+                    ("Packages", bytes),
+                    ("Packages.gz", gz.finish()?),
+                    ("Packages.xz", xz.finish()?),
+                ] {
+                    let path = index.join(name);
+                    write(&path, &data)?;
+                    let (_, sha256, sha512) = hash_file(&path)?;
+                    for (algorithm, hash) in [("SHA256", sha256), ("SHA512", sha512)] {
+                        let by_hash = index.join("by-hash").join(algorithm);
+                        fs::create_dir_all(&by_hash)?;
+                        let object = by_hash.join(hash);
+                        if !object.exists() {
+                            fs::hard_link(&path, object)?;
+                        }
                     }
                 }
             }
         }
+        let r = &c.repository;
+        let valid = (Utc::now() + ChronoDuration::seconds(r.valid_until_seconds as i64))
+            .format("%a, %d %b %Y %H:%M:%S UTC");
+        let header = format!(
+            "Origin: {}\nLabel: {}\nSuite: {}\nCodename: {}\nVersion: {}\nArchitectures: {} all\nComponents: {}\nDescription: {}\nAcquire-By-Hash: yes\nValid-Until: {}\nNotAutomatic: {}\nButAutomaticUpgrades: {}\n",
+            r.origin,
+            r.label,
+            suite_name,
+            if suite_name == &r.suite {
+                &r.codename
+            } else {
+                suite_name
+            },
+            r.version,
+            r.architectures.join(" "),
+            r.components.join(" "),
+            r.description,
+            valid,
+            if r.not_automatic { "yes" } else { "no" },
+            if r.but_automatic_upgrades {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+        let mut release = header.into_bytes();
+        release.extend(AptFtparchive.release(&suite)?);
+        write(&suite.join("Release"), &release)?;
+        signer.sign(&suite.join("Release"))?;
     }
-    let r = &c.repository;
-    let valid = (Utc::now() + ChronoDuration::seconds(r.valid_until_seconds as i64))
-        .format("%a, %d %b %Y %H:%M:%S UTC");
-    let header = format!(
-        "Origin: {}\nLabel: {}\nSuite: {}\nCodename: {}\nVersion: {}\nArchitectures: {} all\nComponents: {}\nDescription: {}\nAcquire-By-Hash: yes\nValid-Until: {}\nNotAutomatic: {}\nButAutomaticUpgrades: {}\n",
-        r.origin,
-        r.label,
-        r.suite,
-        r.codename,
-        r.version,
-        r.architectures.join(" "),
-        r.components.join(" "),
-        r.description,
-        valid,
-        if r.not_automatic { "yes" } else { "no" },
-        if r.but_automatic_upgrades {
-            "yes"
-        } else {
-            "no"
-        }
-    );
-    let mut release = header.into_bytes();
-    release.extend(AptFtparchive.release(&suite)?);
-    write(&suite.join("Release"), &release)?;
-    signer.sign(&suite.join("Release"))?;
     write(&root.join("public.asc"), &signer.export(true)?)?;
     write(&root.join("public.gpg"), &signer.export(false)?)?;
     fs::remove_dir_all(root.join("pool"))?;
@@ -274,6 +326,7 @@ pub fn publish(c: &Config, db: &Database, signer: &dyn Signer) -> Result<Manifes
         suite: r.suite.clone(),
         fingerprint: c.signing.fingerprint.clone(),
         packages,
+        suites,
         files,
     };
     write(
@@ -317,32 +370,47 @@ pub fn verify(c: &Config, m: &Manifest) -> Result<()> {
             "Package integrity failure"
         );
     }
-    // Retained generations may have been signed with a previous trusted key.
-    for file in [
-        "public.asc".to_owned(),
-        "public.gpg".to_owned(),
-        format!("dists/{}/Release", m.suite),
-        format!("dists/{}/InRelease", m.suite),
-        format!("dists/{}/Release.gpg", m.suite),
-    ] {
-        ensure!(
-            m.files.contains_key(&file),
-            "Manifest omits a required signed generation file"
-        );
-    }
+    // Every suite must have signed metadata. Retained keys verify offline.
     ensure!(
         fs::metadata(root.join("public.gpg"))?.len() <= 1024 * 1024,
         "Retained public signing key exceeds 1 MiB"
     );
     let bytes = zeroize::Zeroizing::new(fs::read(root.join("public.gpg"))?);
-    PublicKey::new(c, &m.fingerprint, bytes)?
-        .verify(&root.join("dists").join(&m.suite).join("Release"))?;
+    let key = PublicKey::new(c, &m.fingerprint, bytes)?;
+    let mut union = BTreeMap::new();
+    for name in m.suite_names() {
+        ensure!(crate::config::identifier(&name), "Invalid manifest suite");
+        for p in m.suite_packages(&name) {
+            union.insert(p.id.clone(), p);
+        }
+        for file in [
+            "public.asc".to_owned(),
+            "public.gpg".to_owned(),
+            format!("dists/{name}/Release"),
+            format!("dists/{name}/InRelease"),
+            format!("dists/{name}/Release.gpg"),
+        ] {
+            ensure!(
+                m.files.contains_key(&file),
+                "Manifest omits a required signed generation file"
+            );
+        }
+        key.verify(&root.join("dists").join(name).join("Release"))?;
+    }
+    ensure!(
+        union.len() == m.packages.len()
+            && m.packages.iter().all(|p| union
+                .get(&p.id)
+                .is_some_and(|q| q.sha256 == p.sha256 && q.filename == p.filename)),
+        "Manifest suite membership mismatch"
+    );
     Ok(())
 }
 pub fn reconcile(c: &Config, db: &Database) -> Result<()> {
     let mut conn = db.connect()?;
     let tx = conn.transaction()?;
     tx.execute("UPDATE packages SET active=0", [])?;
+    tx.execute("UPDATE package_suites SET active=0", [])?;
     if let Some(m) = current(c)? {
         for p in &m.packages {
             tx.execute("INSERT INTO packages(id,name,version,architecture,sha256,state,active,metadata) VALUES(?1,?2,?3,?4,?5,'published',1,?6) ON CONFLICT(id) DO UPDATE SET state='published',active=1",params![p.id,p.name,p.version,p.architecture,p.sha256,serde_json::to_string(p)?])?;
@@ -351,6 +419,11 @@ pub fn reconcile(c: &Config, db: &Database) -> Result<()> {
                 "INSERT INTO package_search(id,name,description) VALUES(?1,?2,?3)",
                 params![p.id, p.name, p.description],
             )?;
+        }
+        for suite in m.suite_names() {
+            for p in m.suite_packages(&suite) {
+                tx.execute("INSERT INTO package_suites(suite,package_id,state,active) VALUES(?1,?2,'published',1) ON CONFLICT(suite,package_id) DO UPDATE SET state='published',active=1",params![suite,p.id])?;
+            }
         }
         tx.execute(
             "INSERT OR IGNORE INTO generations(id,created,manifest) VALUES(?1,?2,?3)",

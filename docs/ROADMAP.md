@@ -25,7 +25,8 @@ production 1.0 acceptance. See [VERIFICATION.md](VERIFICATION.md) for evidence.
 - [x] Active-manifest reindex and full active-generation checksum/signature verification
 - [ ] Reconstruct full retained history and import third-party archive metadata
 - [x] Reviewed additive publication diff with Debian version comparisons, architecture/size changes and stale-review rejection
-- [ ] Multi-suite lifecycle, package removal and replacement review
+- [x] Multiple suites with independent staging, signed indexes, scoped CLI/UI/API publication and archive-wide rollback
+- [ ] Package removal, replacement review and per-suite Release policy overrides
 - [ ] Contents indexes and periodic Valid-Until refresh
 - [ ] Audited conflicting-version override policy
 - [ ] Source packages, .udeb, .dsc, .changes, .buildinfo and source tarballs
@@ -39,6 +40,7 @@ production 1.0 acceptance. See [VERIFICATION.md](VERIFICATION.md) for evidence.
 - [x] Command copy enhancement; core navigation works without JavaScript
 - [x] Desktop/mobile browser, keyboard and automated WCAG checks on core public pages
 - [x] Reviewed public/admin/mobile screenshot gallery with repeatable fixture capture
+- [x] Public /api developer guide with Markdown/OpenAPI downloads and tested CI example
 - [ ] Directory sorting/filtering, timestamps, checksums and formatted metadata views
 - [ ] Debian version ordering and complete retained-version detail pagination
 - [ ] Package sitemap shards and large-repository performance tests
@@ -51,7 +53,11 @@ production 1.0 acceptance. See [VERIFICATION.md](VERIFICATION.md) for evidence.
 - [x] Local user CLI/API, last-administrator protection and session revocation
 - [x] Dashboard, upload, staging, reviewed publish, jobs, rollback, audit, users and read-only configuration/signing pages
 - [x] No-JavaScript admin publication, mobile/keyboard and automated WCAG browser tests
-- [ ] Full operational dashboard metrics, managed signing controls and removal UI
+- [x] Private traffic analytics: smooth charts, package/asset rankings, client estimates, retention and trusted proxy CIDRs
+- [x] Administrator-managed expiring project tokens with explicit API permissions and suite restrictions
+- [x] Admin assets and API under /admin for a path-preserving reverse proxy
+- [x] Stable scrollbar layout and accessible keyboard chart inspection
+- [ ] Full operational health/Prometheus metrics, managed signing controls and removal UI
 - [ ] Complete CLI/API command set, OpenAPI schemas and remote authenticated transport
 - [x] HTTP audit actor IDs, transactional account/job auditing and account-change metadata
 - [ ] Individual Unix peer identities and complete package lifecycle before/after audit metadata
@@ -65,6 +71,7 @@ production 1.0 acceptance. See [VERIFICATION.md](VERIFICATION.md) for evidence.
 - [x] Verified rollback CLI/API and interruption/restart tests
 - [x] Reverse proxy and XXC Trust mTLS topology documentation
 - [x] Explicit authenticated wildcard/non-loopback listener opt-in with Host/Origin/CSRF tests
+- [x] Independent public/admin origins, proxy asset checks and admin cookie transport tests
 - [x] Read-only XXC Trust API/CLI/admin inventory with systemd credentials, verified TLS and failure isolation tests
 - [ ] XXC Trust CSR issuance/revocation, certificate lifecycle automation and proxy identity login
 - [ ] Retention, reference-aware dry-run GC and audited deletion

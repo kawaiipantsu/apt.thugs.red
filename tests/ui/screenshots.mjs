@@ -26,12 +26,12 @@ try {
     if (heading) await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
     await page.locator('main').waitFor();
   }
-  async function capture(name) {
+  async function capture(name, fullPage = true) {
     await page.evaluate(() => document.fonts.ready);
     await expect(page.locator('input[type="password"]')).toHaveCount(0);
     await page.screenshot({
       path: `${output}/${name}.png`,
-      fullPage: true,
+      fullPage,
       animations: 'disabled',
       // Even disposable signing fingerprints are hidden in distributed images.
       mask: [
@@ -55,6 +55,8 @@ try {
   await capture('public-repository');
   await visit(publicOrigin, '/help');
   await capture('public-setup');
+  await visit(publicOrigin, '/api', 'build. stage. publish.');
+  await capture('public-api', false);
 
   await visit(adminOrigin, '/admin/login');
   await expect(page.getByLabel('password', { exact: true })).toHaveValue('');
@@ -64,6 +66,11 @@ try {
   await page.getByRole('button', { name: 'sign in →' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('repository control');
   await capture('admin-dashboard');
+  await page.setViewportSize({width:390,height:844});
+  await capture('admin-statistics-mobile');
+  await page.setViewportSize({width:1440,height:1000});
+  await visit(adminOrigin,'/admin/tokens');
+  await capture('admin-tokens');
   await visit(adminOrigin, '/admin/keys');
   await capture('admin-keys');
   await visit(adminOrigin, '/admin/uploads');
@@ -88,7 +95,7 @@ try {
   await capture('admin-job');
   expect(errors).toEqual([]);
   await context.close();
-  console.log(`Captured 13 fixture screenshots in ${output}; review before copying into docs/screenshots.`);
+  console.log(`Captured 16 fixture screenshots in ${output}; review before copying into docs/screenshots.`);
 } finally {
   await browser.close();
 }

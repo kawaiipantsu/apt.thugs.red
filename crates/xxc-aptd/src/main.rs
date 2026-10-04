@@ -144,9 +144,13 @@ async fn serve(c: Config) -> Result<()> {
     };
     let mut tasks = tokio::task::JoinSet::new();
     tasks.spawn(
-        axum::serve(public, xxc_aptd_web::public::router(state.clone()))
-            .with_graceful_shutdown(shutdown(shutdown_rx.clone()))
-            .into_future(),
+        axum::serve(
+            public,
+            xxc_aptd_web::public::router(state.clone())
+                .into_make_service_with_connect_info::<std::net::SocketAddr>(),
+        )
+        .with_graceful_shutdown(shutdown(shutdown_rx.clone()))
+        .into_future(),
     );
     tasks.spawn(
         axum::serve(
@@ -179,6 +183,7 @@ async fn serve(c: Config) -> Result<()> {
         result??;
     }
     let _permit = state.publisher.acquire().await?;
+    state.analytics.shutdown().await;
     fs::remove_file(socket)?;
     drop(lock);
     ensure!(!failed, "A listener failed");

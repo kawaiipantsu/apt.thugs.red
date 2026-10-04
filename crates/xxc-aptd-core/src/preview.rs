@@ -15,6 +15,7 @@ pub struct VersionChange {
 #[derive(Serialize)]
 pub struct Preview {
     pub token: String,
+    pub suite: String,
     pub current_generation: Option<String>,
     pub added: Vec<Package>,
     pub removed: Vec<Package>,
@@ -28,13 +29,14 @@ pub fn preview(c: &Config, db: &Database) -> Result<Preview> {
     let current = repository::current(c)?;
     let before = current
         .as_ref()
-        .map(|m| m.packages.as_slice())
+        .map(|m| m.suite_packages(db.suite()))
         .unwrap_or(&[]);
     let after = db.selected()?;
     let current_generation = current.as_ref().map(|m| m.id.clone());
     let token = format!(
         "{:x}",
         Sha256::digest(serde_json::to_vec(&(
+            db.suite(),
             &current_generation,
             &after,
             &c.repository,
@@ -86,6 +88,7 @@ pub fn preview(c: &Config, db: &Database) -> Result<Preview> {
     let b: BTreeSet<_> = after.iter().map(|p| p.architecture.clone()).collect();
     Ok(Preview {
         token,
+        suite: db.suite().into(),
         current_generation,
         added,
         removed,
@@ -130,6 +133,7 @@ mod tests {
             suite: c.repository.suite.clone(),
             fingerprint: String::new(),
             packages: vec![old.clone()],
+            suites: Default::default(),
             files: Default::default(),
         };
         std::fs::write(
@@ -145,7 +149,7 @@ mod tests {
         db.insert(&old).unwrap();
         db.connect()
             .unwrap()
-            .execute("UPDATE packages SET active=1", [])
+            .execute("UPDATE package_suites SET active=1", [])
             .unwrap();
         let initial = preview(&c, &db).unwrap();
         assert!(initial.added.is_empty());

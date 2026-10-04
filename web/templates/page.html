@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{ heading }} · {{ site }}</title><meta name="description" content="{{ intro }}">
 <link rel="stylesheet" href="/static/site.css"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><script src="/static/site.js" defer></script></head>
-<body><a class="skip" href="#main">skip to content</a><header><a class="brand" href="/">[THUGS<span>(red)</span>]<b>XXC / APTD</b></a><nav aria-label="main"><a href="/packages">/packages</a><a href="/repo/">/repository</a><a href="/releases">/releases</a><a href="/help">/setup</a><a href="/about">/about</a></nav></header>
+<body><a class="skip" href="#main">skip to content</a><header><a class="brand" href="/">[THUGS<span>(red)</span>]<b>XXC / APTD</b></a>{% include "public-nav.html" %}</header>
 <main id="main"><div class="eyebrow">root@apt:~$ <span>{{ prompt }}</span><span class="cursor" aria-hidden="true">█</span></div><h1>{{ heading }}</h1><p class="intro">{{ intro }}</p>
 {% if !stats.is_empty() %}<dl class="stats">{% for row in stats %}<div><dt>{{ row.0 }}</dt><dd>{{ row.1 }}</dd></div>{% endfor %}</dl>{% endif %}
 {% if search %}<form class="search" action="/search" method="get"><label for="query">find a package</label><div><input id="query" type="search" name="q" value="{{ query }}" maxlength="256" placeholder="package name or description"><button type="submit">search →</button></div></form>{% endif %}
@@ -14,5 +14,5 @@
 {% if !download.is_empty() %}<p><a class="button" href="{{ download }}">download .deb ↓</a></p>{% endif %}
 {% if !command.is_empty() %}<section class="terminal"><div class="section-title"><h2>{{ command_title }}</h2><button class="copy" type="button" data-copy="command">copy</button></div><pre id="command"><code>{{ command }}</code></pre></section>{% endif %}
 {% if !note.is_empty() %}<aside class="note">{{ note }}</aside>{% endif %}
-<div class="footer-links"><a href="/help">configure your client →</a><a href="/repo/">browse raw archive →</a></div></main>
+<div class="footer-links"><a href="/api">integrate your build pipeline →</a><a href="/help">configure your client →</a><a href="/repo/">browse raw archive →</a></div></main>
 <footer><div><strong>XXC-APTD</strong> / {{ version }}<p>A THUGS(red) project by Kawaiipantsu.</p></div><a href="{{ main_site }}">thugs.red ↗</a><p class="muted">serve packages, not bullshit.</p></footer><div role="status" id="copy-status" aria-live="polite"></div></body></html>

@@ -6,7 +6,7 @@ use axum::{
     extract::{OriginalUri, Path, Query, State as App},
     http::{HeaderValue, Request, StatusCode},
     middleware::{self, Next},
-    response::{Html, IntoResponse, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
 use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
@@ -92,6 +92,11 @@ pub fn router(state: State) -> Router {
             .route("/packages/{name}", get(package))
             .route("/help", get(help))
             .route("/about", get(about))
+            .route("/api", get(api_guide))
+            .route("/api/", get(|| async { Redirect::permanent("/api") }))
+            .route("/api/guide.md", get(|| async { documentation("text/markdown; charset=utf-8",crate::api_docs::GUIDE) }))
+            .route("/api/reference.md", get(|| async { documentation("text/markdown; charset=utf-8",include_str!("../../../docs/API.md")) }))
+            .route("/api/openapi.json", get(|| async { documentation("application/json",crate::api_docs::OPENAPI) }))
             .route("/releases", get(release))
             .route("/releases/{suite}", get(release_suite))
             .route("/repo", get(repository_root))
@@ -129,15 +134,33 @@ pub fn router(state: State) -> Router {
                 get(|| async {
                     (
                         [("content-type", "text/plain")],
-                        "User-agent: *\nDisallow: /repo/pool/\nDisallow: /admin\nDisallow: /api/\n",
+                        "User-agent: *\nDisallow: /repo/pool/\nDisallow: /admin\nDisallow: /api/v1/\n",
                     )
                 }),
             )
             .route("/sitemap.xml", get(sitemap))
             .fallback(not_found)
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
+                crate::analytics::observe,
+            ))
             .layer(middleware::from_fn_with_state(state.clone(), validate_host))
             .with_state(state),
     )
+}
+async fn api_guide(App(s): App<State>) -> Response {
+    let mut response = crate::api_docs::page(&s);
+    response
+        .headers_mut()
+        .insert("cache-control", HeaderValue::from_static("no-cache"));
+    response
+}
+fn documentation(mime: &'static str, content: &'static str) -> Response {
+    (
+        [("content-type", mime), ("cache-control", "no-cache")],
+        content,
+    )
+        .into_response()
 }
 async fn validate_host(App(s): App<State>, request: Request<Body>, next: Next) -> Response {
     let supplied = request
@@ -245,15 +268,28 @@ async fn packages(App(s): App<State>, Query(q): Query<crate::api::Search>) -> Re
     );
     p.search = true;
     p.query = q.q.clone();
-    let db = s.db.clone();
+    if q.suite
+        .as_ref()
+        .is_some_and(|suite| !s.config.repository.has_suite(suite))
+    {
+        return error(&s, StatusCode::BAD_REQUEST, "unknown suite");
+    }
+    let db = q
+        .suite
+        .as_ref()
+        .map_or_else(|| s.db.clone(), |suite| s.db.for_suite(suite));
     let query = q.q.clone();
     match blocking(move || db.list(true, &query, q.page)).await {
         Ok(list) => {
             if list.len() == 50 {
                 p.next = format!(
-                    "/search?q={}&page={}",
+                    "/search?q={}&page={}{}",
                     utf8_percent_encode(&q.q, NON_ALPHANUMERIC),
-                    q.page.saturating_add(1)
+                    q.page.saturating_add(1),
+                    q.suite
+                        .as_ref()
+                        .map(|suite| format!("&suite={suite}"))
+                        .unwrap_or_default()
                 );
             }
             p.packages = list;
@@ -314,20 +350,26 @@ async fn package(App(s): App<State>, Path(name): Path<String>) -> Response {
     p.response()
 }
 fn sources(s: &State) -> String {
+    sources_for(s, &s.config.repository.suite)
+}
+fn sources_for(s: &State, suite: &str) -> String {
     format!(
         "Types: deb\nURIs: {}/repo\nSuites: {}\nComponents: {}\nArchitectures: {}\nSigned-By: /usr/share/keyrings/thugsred-archive-keyring.gpg\n",
         s.config.server.external_url,
-        s.config.repository.suite,
+        suite,
         s.config.repository.components.join(" "),
         s.config.repository.architectures.join(" ")
     )
 }
 fn legacy(s: &State) -> String {
+    legacy_for(s, &s.config.repository.suite)
+}
+fn legacy_for(s: &State, suite: &str) -> String {
     format!(
         "deb [arch={} signed-by=/usr/share/keyrings/thugsred-archive-keyring.gpg] {}/repo {} {}\n",
         s.config.repository.architectures.join(","),
         s.config.server.external_url,
-        s.config.repository.suite,
+        suite,
         s.config.repository.components.join(" ")
     )
 }
@@ -377,30 +419,56 @@ async fn about(App(s): App<State>) -> Response {
     p.response()
 }
 async fn release(App(s): App<State>) -> Response {
-    release_page(s).await
-}
-async fn release_suite(App(s): App<State>, Path(suite): Path<String>) -> Response {
-    if suite != s.config.repository.suite {
-        return error(&s, StatusCode::NOT_FOUND, "suite not found");
-    }
-    release_page(s).await
-}
-async fn release_page(s: State) -> Response {
-    let c = s.config.clone();
-    let result = blocking(move || repository::current(&c)).await;
     let mut p = Page::new(
         &s,
-        &s.config.repository.suite,
-        "Signed archive publication.",
+        "release channels.",
+        "Each suite has its own reviewed package selection.",
     );
+    p.browser = true;
+    p.entries = s
+        .config
+        .repository
+        .suite_names()
+        .into_iter()
+        .map(|name| Entry {
+            name: name.clone(),
+            url: format!("/releases/{name}"),
+            kind: "suite".into(),
+            size: "—".into(),
+            action: "inspect →".into(),
+        })
+        .collect();
+    p.response()
+}
+async fn release_suite(App(s): App<State>, Path(suite): Path<String>) -> Response {
+    if !s.config.repository.has_suite(&suite) {
+        return error(&s, StatusCode::NOT_FOUND, "suite not found");
+    }
+    release_page(s, suite).await
+}
+async fn release_page(s: State, suite: String) -> Response {
+    let c = s.config.clone();
+    let result = blocking(move || repository::current(&c)).await;
+    let mut p = Page::new(&s, &suite, "Signed archive publication.");
     match result {
         Ok(Some(m)) => {
+            let count = m.suite_packages(&suite).len();
             p.details = vec![
                 ("generation".into(), m.id),
                 ("published".into(), m.created),
                 ("fingerprint".into(), m.fingerprint),
-                ("packages".into(), m.packages.len().to_string()),
+                ("packages".into(), count.to_string()),
             ];
+            p.entries = vec![Entry {
+                name: "thugsred.sources".into(),
+                url: format!("/repo/thugsred.sources?suite={suite}"),
+                kind: "Deb822 source definition".into(),
+                size: "—".into(),
+                action: "download ↓".into(),
+            }];
+            p.browser = true;
+            p.command = sources_for(&s, &suite);
+            p.command_title = "Deb822 source definition".into();
             p.response()
         }
         Ok(None) => {
@@ -502,10 +570,18 @@ async fn repository_file(
         Err(_) => return error(&s, StatusCode::BAD_REQUEST, "invalid path"),
     };
     if relative == "thugsred.sources" || relative == "thugsred.list" {
+        let q = match serde_urlencoded::from_str::<crate::api::Search>(uri.query().unwrap_or("")) {
+            Ok(q) => q,
+            Err(_) => return error(&s, StatusCode::BAD_REQUEST, "invalid query"),
+        };
+        let suite = q.suite.as_deref().unwrap_or(&s.config.repository.suite);
+        if !s.config.repository.has_suite(suite) {
+            return error(&s, StatusCode::BAD_REQUEST, "unknown suite");
+        }
         let content = if relative.ends_with(".sources") {
-            sources(&s)
+            sources_for(&s, suite)
         } else {
-            legacy(&s)
+            legacy_for(&s, suite)
         };
         return (
             [
@@ -622,7 +698,15 @@ async fn sitemap(App(s): App<State>) -> Response {
     let mut xml = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">",
     );
-    for path in ["/", "/packages", "/releases", "/help", "/about", "/repo/"] {
+    for path in [
+        "/",
+        "/packages",
+        "/releases",
+        "/help",
+        "/about",
+        "/api",
+        "/repo/",
+    ] {
         xml.push_str(&format!("<url><loc>{origin}{path}</loc></url>"));
     }
     xml.push_str("</urlset>");
@@ -632,6 +716,127 @@ async fn sitemap(App(s): App<State>) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn public_documentation_is_static_read_only_and_does_not_disclose_admin_config() {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = xxc_aptd_core::config::Config::initialize(
+            &root.path().join("config"),
+            Some(root.path()),
+        )
+        .unwrap();
+        config.admin.external_url = "https://private-admin.example.invalid".into();
+        config.server.trusted_proxies = vec!["192.0.2.99/32".parse().unwrap()];
+        let db = xxc_aptd_core::db::Database::open(&config).unwrap();
+        let app = router(State::new(config, db).unwrap());
+        for (path, mime) in [
+            ("/api", "text/html"),
+            ("/api/guide.md", "text/markdown"),
+            ("/api/reference.md", "text/markdown"),
+            ("/api/openapi.json", "application/json"),
+        ] {
+            for method in ["GET", "HEAD", "POST"] {
+                let r = app
+                    .clone()
+                    .oneshot(
+                        Request::builder()
+                            .method(method)
+                            .uri(path)
+                            .header("host", "localhost")
+                            .body(Body::empty())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    r.status(),
+                    if method == "POST" {
+                        StatusCode::METHOD_NOT_ALLOWED
+                    } else {
+                        StatusCode::OK
+                    }
+                );
+                if method == "POST" {
+                    continue;
+                }
+                assert!(
+                    r.headers()["content-type"]
+                        .to_str()
+                        .unwrap()
+                        .starts_with(mime)
+                );
+                assert_eq!(r.headers()["cache-control"], "no-cache");
+                assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+                let body = axum::body::to_bytes(r.into_body(), 1024 * 1024)
+                    .await
+                    .unwrap();
+                let text = std::str::from_utf8(&body).unwrap();
+                assert!(
+                    !text.contains("private-admin.example.invalid") && !text.contains("192.0.2.99")
+                );
+                if method == "HEAD" {
+                    assert!(body.is_empty());
+                } else if path == "/api/guide.md" {
+                    assert_eq!(text, crate::api_docs::GUIDE);
+                } else if path == "/api/openapi.json" {
+                    assert_eq!(text, crate::api_docs::OPENAPI);
+                }
+            }
+        }
+        for path in [
+            "/api/v1/uploads",
+            "/api/v1/tokens",
+            "/admin/api/v1/uploads",
+            "/api/../config",
+        ] {
+            let r = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri(path)
+                        .header("host", "localhost")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        }
+        let r = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/")
+                    .header("host", "localhost")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(r.headers()["location"], "/api");
+        for (path, expected) in [
+            ("/", "href=\"/api\""),
+            ("/sitemap.xml", "/api</loc>"),
+            ("/robots.txt", "Disallow: /api/v1/\n"),
+        ] {
+            let r = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(path)
+                        .header("host", "localhost")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            let body = axum::body::to_bytes(r.into_body(), 1024 * 1024)
+                .await
+                .unwrap();
+            assert!(std::str::from_utf8(&body).unwrap().contains(expected));
+        }
+    }
     #[tokio::test]
     async fn public_private_separation_and_headers() {
         let root = tempfile::tempdir().unwrap();

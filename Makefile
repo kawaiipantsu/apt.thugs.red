@@ -5,7 +5,7 @@ DESTDIR ?=
 export PREFIX SYSCONFDIR LOCALSTATEDIR DESTDIR
 
 .DEFAULT_GOAL := build
-.PHONY: all build build-debug build-release fmt fmt-check lint check test test-unit test-integration test-ui test-systemd screenshots licenses security audit man docs docs-check wiki-build wiki-check wiki-sync deb deb-clean lintian install uninstall clean distclean version version-check bump-patch bump-minor bump-major bump-auto deb-revision release-patch release-minor release-major publish-release ci
+.PHONY: all build build-debug build-release fmt fmt-check lint check test test-unit test-integration test-ui test-systemd screenshots licenses security audit man docs docs-check wiki-build wiki-check wiki-sync deb deb-clean lintian install uninstall clean distclean version version-check bump-patch bump-minor bump-major bump-auto deb-revision release-patch release-minor release-major prepare-release publish-release ci
 all: build
 build: build-debug
 build-debug:
@@ -26,11 +26,13 @@ test-unit:
 	python3 -m unittest discover -s tests/tooling -v
 test-integration: build-debug
 	python3 tests/integration/apt_e2e.py
+	python3 tests/integration/automation_e2e.py
 	python3 tests/integration/admin_e2e.py
 	python3 tests/integration/trust_e2e.py
 	python3 tests/integration/remote_signing_e2e.py
 test-ui: build-debug
 	python3 tests/integration/ui.py
+	python3 tests/integration/ui.py --proxy
 screenshots: build-debug
 	python3 tests/integration/ui.py --screenshots
 test-systemd: build-debug
@@ -78,6 +80,8 @@ deb-revision:
 	python3 scripts/maintain.py deb-revision
 release-patch release-minor release-major:
 	python3 scripts/maintain.py $@
+prepare-release:
+	python3 scripts/maintain.py prepare-release
 publish-release:
 	python3 scripts/maintain.py publish-release
 ci: fmt-check lint check test docs-check version-check wiki-check man test-ui audit lintian

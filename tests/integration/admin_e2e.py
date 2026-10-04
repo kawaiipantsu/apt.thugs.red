@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Exercise the real HTTP authentication boundary and Unix bootstrap with disposable data."""
-from apt_e2e import Harness, CLI, run
+from apt_e2e import Harness, CLI, PROJECT, run
 from pathlib import Path
 import http.client
 import json
@@ -150,6 +150,32 @@ def exercise(h):
     for path in [h.root/"aptd.log",h.root/"audit.log",h.root/"process.log"]:
         text = path.read_text()
         assert PASSWORD not in text and session_cookie not in text and admin.csrf not in text
+    # Public HTTPS and explicitly configured HTTP administration are independent.
+    original = h.config.read_text()
+    h.config.write_text(original.replace(h.origin, "https://archive.example.invalid"))
+    h.start()
+    for path, mime, source in [
+        ("/static/site.js", "text/javascript", PROJECT / "web/static/js/site.js"),
+        ("/static/site.css", "text/css", PROJECT / "web/static/css/site.css"),
+    ]:
+        status, headers, body = h.fetch(path, headers={"Host":"archive.example.invalid"})
+        assert status == 200 and headers["content-type"].startswith(mime)
+        assert headers["x-content-type-options"] == "nosniff" and body == source.read_bytes()
+        assert h.fetch(path, headers={"Host":"untrusted.invalid","X-Forwarded-Host":"archive.example.invalid"})[0] == 400
+    assert h.fetch("/", headers={"Host":"archive.example.invalid"})[0] == 200
+    assert b"URIs: https://archive.example.invalid/repo" in h.fetch("/repo/thugsred.sources", headers={"Host":"archive.example.invalid"})[2]
+    assert h.fetch("/api/v1/status", headers={"Host":"archive.example.invalid"})[0] == 404
+    separate_admin = Browser(h)
+    status, headers, _ = separate_admin.request("GET", "/api/v1/auth/challenge", headers={"X-Forwarded-Proto":"https"})
+    cookie = headers["set-cookie"]
+    assert status == 200 and cookie.startswith("xxc-login=") and "; Secure" not in cookie
+    assert "HttpOnly" in cookie and "SameSite=Strict" in cookie and "Domain=" not in cookie
+    assert separate_admin.login("admin")[0] == 200
+    assert separate_admin.request("GET", "/api/v1/status")[0] == 200
+    assert separate_admin.request("POST", "/api/v1/repository/verify", {}, headers={"Origin":"https://archive.example.invalid"})[0] == 403
+    assert separate_admin.request("POST", "/api/v1/auth/logout", {})[0] == 200
+    h.stop()
+    h.config.write_text(original)
     # Settings persist, and HTTPS origin selects a Secure host-only cookie.
     c = sqlite3.connect(h.root/"state/state.db")
     c.execute("DELETE FROM login_limits"); c.commit(); c.close()
@@ -170,7 +196,7 @@ def exercise(h):
     h.stop()
     h.config.write_text(h.config.read_text().replace(h.admin_origin,"https://admin.example.invalid"))
     h.start()
-    status, headers, _ = Browser(h).request("GET", "/api/v1/auth/challenge")
+    status, headers, _ = Browser(h).request("GET", "/api/v1/auth/challenge", headers={"X-Forwarded-Proto":"http"})
     cookie = headers["set-cookie"]
     assert status == 200 and "__Host-xxc-login=" in cookie and "; Secure" in cookie and "HttpOnly" in cookie and "SameSite=Strict" in cookie and "Domain=" not in cookie
     h.stop()

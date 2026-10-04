@@ -12,3 +12,6 @@ document.addEventListener("click", async (event) => {
   }
   window.setTimeout(() => { status.textContent = ""; }, 4000);
 });
+
+// Documentation remains readable without JavaScript; reveal copy controls when available.
+document.querySelectorAll(".doc-code [data-copy]").forEach(button => { button.hidden = false; });

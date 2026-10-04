@@ -22,6 +22,7 @@ pub struct Principal {
     pub actor: Actor,
     pub role: Role,
     pub session: Option<Session>,
+    pub token: Option<xxc_aptd_core::tokens::Token>,
 }
 impl Principal {
     pub fn operator(&self) -> Result<()> {
@@ -50,12 +51,14 @@ pub async fn local(mut request: Request<Body>, next: Next) -> Response {
         actor: Actor::local(),
         role: Role::Administrator,
         session: None,
+        token: None,
     });
     next.run(request).await
 }
 pub fn secure_cookie(s: &State) -> bool {
+    // Only the admin origin receives session cookies. The independently proxied
+    // public origin must not change the admin transport or cookie namespace.
     s.config.admin.external_url.starts_with("https://")
-        || s.config.server.external_url.starts_with("https://")
 }
 pub fn cookie_name(s: &State, challenge: bool) -> &'static str {
     match (secure_cookie(s), challenge) {
@@ -113,7 +116,8 @@ pub async fn boundary(App(s): App<State>, request: Request<Body>, next: Next) ->
         .unwrap_or("");
     let valid = request.headers().get_all("host").iter().count() == 1
         && (host == expected || host == s.config.server.admin_listen.to_string());
-    let api = request.uri().path().starts_with("/api/");
+    let api = request.uri().path().starts_with("/api/")
+        || request.uri().path().starts_with("/admin/api/");
     let mut response = if !s.config.admin.enabled {
         error(StatusCode::SERVICE_UNAVAILABLE, "administration_disabled").into_response()
     } else if !valid {
@@ -145,6 +149,9 @@ pub async fn boundary(App(s): App<State>, request: Request<Body>, next: Next) ->
 pub async fn gate(App(s): App<State>, mut request: Request<Body>, next: Next) -> Response {
     let path = request.uri().path().to_owned();
     let api = path.starts_with("/api/") || matches!(path.as_str(), "/healthz" | "/readyz");
+    if request.headers().contains_key("authorization") {
+        return bearer(s, request, next).await;
+    }
     let Some(token) = cookie(request.headers(), cookie_name(&s, false)) else {
         return unauthenticated(api);
     };
@@ -162,8 +169,11 @@ pub async fn gate(App(s): App<State>, mut request: Request<Body>, next: Next) ->
         },
         role: session.user.role,
         session: Some(session),
+        token: None,
     };
-    let admin_only = path == "/api/v1/config"
+    let admin_only = path.starts_with("/api/v1/tokens")
+        || path.starts_with("/admin/tokens")
+        || path == "/api/v1/config"
         || path.starts_with("/api/v1/users")
         || path.starts_with("/api/v1/keys")
         || path.starts_with("/admin/keys")
@@ -339,4 +349,73 @@ pub(crate) async fn end_session(s: &State, p: Principal) -> Result<()> {
         blocking(move || db.logout(&p.actor, &session.token_hash)).await?;
     }
     Ok(())
+}
+
+/// Bearer authority is limited to an explicit route/method allowlist. It never
+/// authenticates HTML, account management, signer operations or configuration.
+async fn bearer(s: State, mut request: Request<Body>, next: Next) -> Response {
+    let header = request
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok());
+    if request.headers().get_all("authorization").iter().count() != 1
+        || request.headers().contains_key("cookie")
+    {
+        return error(StatusCode::UNAUTHORIZED, "ambiguous_credentials").into_response();
+    }
+    let Some(secret) = header
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .filter(|s| s.len() == 73)
+    else {
+        return error(StatusCode::UNAUTHORIZED, "invalid_token").into_response();
+    };
+    let secret = zeroize::Zeroizing::new(secret.to_owned());
+    let db = s.db.clone();
+    let token = match blocking(move || db.authenticate_token(&secret)).await {
+        Ok(Some(t)) => t,
+        Ok(None) => return error(StatusCode::UNAUTHORIZED, "invalid_token").into_response(),
+        Err(e) => return Error::internal(e).into_response(),
+    };
+    let path = request.uri().path();
+    let scope = match (request.method(), path) {
+        (
+            &Method::GET,
+            "/api/v1/status"
+            | "/api/v1/suites"
+            | "/api/v1/packages"
+            | "/api/v1/uploads"
+            | "/api/v1/jobs"
+            | "/api/v1/repository/diff",
+        ) => "read",
+        (&Method::GET, p)
+            if p.starts_with("/api/v1/packages/") || p.starts_with("/api/v1/jobs/") =>
+        {
+            "read"
+        }
+        (&Method::POST, "/api/v1/uploads") => "upload",
+        (&Method::POST, p) if p.starts_with("/api/v1/uploads/") && p.ends_with("/stage") => "stage",
+        (&Method::POST, "/api/v1/repository/publish") => "publish",
+        _ => return error(StatusCode::FORBIDDEN, "token_scope_required").into_response(),
+    };
+    let query =
+        match serde_urlencoded::from_str::<crate::api::Search>(request.uri().query().unwrap_or(""))
+        {
+            Ok(q) => q,
+            Err(_) => return error(StatusCode::BAD_REQUEST, "invalid_query").into_response(),
+        };
+    let suite = query.suite.as_deref().unwrap_or(&s.config.repository.suite);
+    if !s.config.repository.has_suite(suite) || !token.allows(scope, suite) {
+        return error(StatusCode::FORBIDDEN, "token_scope_required").into_response();
+    }
+    request.extensions_mut().insert(Principal {
+        actor: Actor {
+            id: format!("token:{}", token.id),
+            interface: "token".into(),
+            request_id: uuid::Uuid::new_v4().to_string(),
+        },
+        role: Role::Operator,
+        session: None,
+        token: Some(token),
+    });
+    next.run(request).await
 }

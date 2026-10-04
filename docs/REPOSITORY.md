@@ -47,3 +47,29 @@ single-publisher lock used by staging and rollback. A stale review returns 409.
 Version comparisons use Debian epoch/upstream/revision semantics, including `~`.
 Existing versions remain selected; an older addition does not necessarily change
 APT's preferred version. Removal and replacement overrides are not implemented.
+
+## Multiple suites
+
+Configure an explicit `repository.suites` list while retaining the primary
+`repository.suite`. Each suite owns uploaded/staged/active memberships in shared
+immutable package objects. UI suite selectors and CLI `--suite` choose a channel;
+API calls use `?suite=nightly`. Identical package bytes may belong to several suites.
+Publishing consumes only the target suite's staged membership. Other suites retain
+their currently published selections, including when they have pending changes.
+
+A generation contains all configured suites. Each receives signed Release,
+InRelease, Release.gpg and by-hash indexes before the single atomic switch. Other
+suites' metadata is refreshed with unchanged selections. Rollback restores the
+entire generation across all suites. Verification checks every suite. Removing a
+published suite from configuration blocks publication instead of silently removing
+its files. Additional suites share the configured primary suite's Release policy;
+per-suite NotAutomatic/expiry/architecture overrides remain future work.
+
+Schema migration assigns existing package records to the primary suite. Legacy
+single-suite manifests remain readable, verifiable and usable for rollback and
+reindex. The filesystem manifest records complete suite membership independently
+of SQLite. Public `/releases` lists channels; `/releases/<suite>` includes its source
+definition. Download `/repo/thugsred.sources?suite=nightly` or the `.list` equivalent.
+The canonical URLs without a query preserve existing default-suite clients.
+
+See [AUTOMATION.md](AUTOMATION.md) for project tokens and automated publication.

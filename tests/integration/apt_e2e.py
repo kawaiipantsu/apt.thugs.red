@@ -137,7 +137,7 @@ class Harness:
         return output
 
 
-def apt_acquire(h, package):
+def apt_acquire(h, package, suite="zerotrust"):
     key = h.root / "client-keyring.gpg"
     key.write_bytes(h.fetch("/repo/thugsred-archive-keyring.gpg")[2])
     assert b"BEGIN PGP PUBLIC KEY" in h.fetch("/repo/thugsred.gpg.key")[2]
@@ -148,7 +148,7 @@ def apt_acquire(h, package):
     for directory in ["etc", "state/lists/partial", "cache/archives/partial", "download"]:
         (apt / directory).mkdir(parents=True)
     (apt / "state/status").write_text("")
-    (apt / "etc/sources.list").write_text(f"deb [arch=amd64 signed-by={key}] {h.origin}/repo zerotrust main\n")
+    (apt / "etc/sources.list").write_text(f"deb [arch=amd64 signed-by={key}] {h.origin}/repo {suite} main\n")
     cfg = apt / "apt.conf"
     import pwd
     cfg.write_text(f'Dir "{apt}";\nDir::Etc "{apt}/etc";\nDir::Etc::main "-";\nDir::Etc::parts "-";\nDir::Etc::sourcelist "sources.list";\nDir::Etc::sourceparts "-";\nDir::State "{apt}/state";\nDir::State::status "{apt}/state/status";\nDir::Cache "{apt}/cache";\nAPT::Sandbox::User "{pwd.getpwuid(os.getuid()).pw_name}";\nAPT::Get::List-Cleanup "false";\nAcquire::By-Hash "force";\nAcquire::Languages "none";\n')
@@ -198,6 +198,14 @@ def exercise(h):
     assert h.api("POST", "uploads", conflict.read_bytes(), raw=True)[0] == 400
     assert h.api("POST", f"uploads/{package['id']}/stage", {})[0] == 200
     h.job("repository/publish")
+    # A pre-suite manifest has no membership map; keep it usable for verify,
+    # restart/reindex and subsequent rollback without rewriting its signatures.
+    current = (h.root / 'state/repository/dists').resolve().parent
+    manifest_path = current / 'manifest.json'
+    legacy = json.loads(manifest_path.read_text())
+    legacy.pop('suites')
+    manifest_path.write_text(json.dumps(legacy))
+    h.job('repository/verify')
     current = h.api("GET", "status")[1]["generation"]
     assert h.fetch("/packages/xxc-fixture")[0] == 200
     assert b"xxc-fixture" in h.fetch("/search?q=searchable")[2]

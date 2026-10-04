@@ -51,3 +51,20 @@ Administrators can generate CA-held OpenPGP keys and download public exports on
 `/admin/keys`. The form explains public identity and ambiguous timeout behavior;
 activation requires an explicit server configuration change. The browser suite
 exercises remote signing and key management without JavaScript.
+
+The layout reserves scrollbar space, with an always-scroll fallback. The admin
+dashboard renders responsive SVG curves, sparklines, a request mix ring and
+ranked bars with keyboard inspection and equivalent daily tables. See
+[ANALYTICS.md](ANALYTICS.md). Suite workflow selectors and administrator token
+creation/revocation work without JavaScript. Assets and browser APIs use the
+/admin prefix for a single proxy location.
+
+
+## Public API guide
+
+The `/api` link appears in the shared public navigation and footer. The guide
+renders `docs/AUTOMATION.md` into HTML with a table of contents, responsive tables
+and copyable examples. Markdown and OpenAPI links let developers and coding
+agents fetch the same reference directly. Reading and anchor navigation work
+without JavaScript; copy controls appear when JavaScript is available. Code and
+reference tables scroll within the content column at mobile widths.

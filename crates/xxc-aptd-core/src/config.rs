@@ -20,6 +20,8 @@ pub struct Config {
     #[serde(default)]
     pub admin: Admin,
     #[serde(default)]
+    pub analytics: Analytics,
+    #[serde(default)]
     pub xxc_trust: XxcTrust,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -33,6 +35,23 @@ pub struct Server {
     pub max_upload_bytes: u64,
     pub upload_timeout_seconds: u64,
     pub max_concurrent_uploads: usize,
+    #[serde(default)]
+    pub trusted_proxies: Vec<ipnet::IpNet>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Analytics {
+    pub enabled: bool,
+    pub retention_days: u32,
+}
+impl Default for Analytics {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            retention_days: 90,
+        }
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -51,6 +70,8 @@ pub struct Repository {
     pub origin: String,
     pub label: String,
     pub suite: String,
+    #[serde(default)]
+    pub suites: Vec<String>,
     pub codename: String,
     pub components: Vec<String>,
     pub architectures: Vec<String>,
@@ -60,6 +81,18 @@ pub struct Repository {
     pub but_automatic_upgrades: bool,
     pub valid_until_seconds: u64,
     pub acquire_by_hash: bool,
+}
+impl Repository {
+    pub fn suite_names(&self) -> Vec<String> {
+        if self.suites.is_empty() {
+            vec![self.suite.clone()]
+        } else {
+            self.suites.clone()
+        }
+    }
+    pub fn has_suite(&self, suite: &str) -> bool {
+        self.suite_names().iter().any(|s| s == suite)
+    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -228,6 +261,19 @@ impl Config {
         Ok(c)
     }
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            (1..=365).contains(&self.analytics.retention_days),
+            "analytics.retention_days must be 1..365"
+        );
+        ensure!(
+            self.server.trusted_proxies.len() <= 64
+                && self
+                    .server
+                    .trusted_proxies
+                    .iter()
+                    .all(|net| net.prefix_len() > 0),
+            "server.trusted_proxies must contain at most 64 explicit networks; trusting all addresses is forbidden"
+        );
         self.xxc_trust.validate()?;
         ensure!(
             self.server.admin_listen.ip().is_loopback() || self.admin.allow_remote,
@@ -319,6 +365,18 @@ impl Config {
             "upload_timeout_seconds must be 1..3600"
         );
         let r = &self.repository;
+        let suites = r.suite_names();
+        ensure!(
+            suites.len() <= 32
+                && suites.contains(&r.suite)
+                && suites.iter().all(|s| identifier(s))
+                && suites
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+                    == suites.len(),
+            "repository.suites must contain the default suite and up to 32 unique valid names"
+        );
         ensure!(
             identifier(&r.suite) && identifier(&r.codename),
             "Invalid suite/codename"
@@ -630,6 +688,30 @@ mod tests {
         assert!(c.validate().is_err());
         c.signing.backend = "gpg".into();
         assert!(c.validate().is_err());
+    }
+    #[test]
+    fn suite_and_proxy_configuration_are_bounded() {
+        let c: Config = toml::from_str(include_str!("../../../config/aptd.conf.example")).unwrap();
+        for names in [
+            vec!["nightly"],
+            vec!["zerotrust", "zerotrust"],
+            vec!["zerotrust", "../nightly"],
+        ] {
+            let mut bad = c.clone();
+            bad.repository.suites = names.into_iter().map(str::to_owned).collect();
+            assert!(bad.validate().is_err());
+        }
+        let mut good = c.clone();
+        good.repository.suites = vec!["zerotrust".into(), "nightly".into()];
+        assert!(good.validate().is_ok());
+        for cidr in ["0.0.0.0/0", "::/0"] {
+            let mut bad = c.clone();
+            bad.server.trusted_proxies = vec![cidr.parse().unwrap()];
+            assert!(bad.validate().is_err());
+        }
+        let mut bad = c;
+        bad.analytics.retention_days = 0;
+        assert!(bad.validate().is_err());
     }
     #[test]
     fn example_is_valid_and_strict() {

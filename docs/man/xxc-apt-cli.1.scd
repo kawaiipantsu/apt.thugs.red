@@ -103,3 +103,17 @@ doctor commands are roadmap work.
 # SEE ALSO
 
 *xxc-aptd*(8), *aptd.conf*(5)
+
+# SUITE SELECTION
+
+*--suite* _name_ selects the suite for package queries, uploads, staging and
+reviewed publication. Omission uses repository.suite. For example:
+
+```
+xxc-apt-cli --suite nightly upload add package.deb
+xxc-apt-cli --suite nightly upload stage PACKAGE_ID
+xxc-apt-cli --suite nightly repo diff
+xxc-apt-cli --suite nightly repo publish --review-token REVIEW_TOKEN
+```
+
+Rollback restores every suite in a retained generation.

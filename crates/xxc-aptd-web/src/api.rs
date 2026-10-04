@@ -59,6 +59,10 @@ pub(crate) fn routes(state: State) -> Router {
     secure(
         Router::new()
             .route("/api/v1/status", get(status))
+            .route("/api/v1/suites", get(suites))
+            .route("/api/v1/tokens", get(tokens).post(create_token))
+            .route("/api/v1/tokens/{id}/revoke", post(revoke_token))
+            .route("/api/v1/analytics", get(analytics))
             .route(
                 "/api/v1/keys",
                 get(crate::keys::list).post(crate::keys::generate),
@@ -142,6 +146,27 @@ async fn status(App(s): App<State>) -> Result<Json<Value>> {
         .await?,
     ))
 }
+async fn analytics(
+    App(s): App<State>,
+    Query(q): Query<crate::dashboard::Query>,
+) -> Result<Json<Value>> {
+    if !q.valid() {
+        return Err(crate::auth::error(
+            StatusCode::BAD_REQUEST,
+            "invalid_analytics_window",
+        ));
+    }
+    let enabled = s.config.analytics.enabled;
+    let retention = s.config.analytics.retention_days;
+    let dropped = s.analytics.dropped();
+    let snapshot = blocking(move || {
+        s.db.analytics_snapshot(q.days, xxc_aptd_core::analytics::today())
+    })
+    .await?;
+    Ok(Json(
+        json!({"enabled":enabled,"retention_days":retention,"dropped_events":dropped,"statistics":snapshot}),
+    ))
+}
 pub(crate) async fn health(App(s): App<State>) -> Result<Json<Value>> {
     Ok(Json(blocking(move||{s.config.check_directories()?;let check:String=s.db.connect()?.query_row("PRAGMA quick_check",[],|r|r.get(0))?;anyhow::ensure!(check=="ok","SQLite health check failed");let m=repository::current(&s.config)?;Ok(json!({"database":"ok","directories":"ok","published":m.is_some(),"signer_configured":!s.config.signing.fingerprint.is_empty()}))}).await?))
 }
@@ -151,8 +176,10 @@ pub struct Search {
     pub q: String,
     #[serde(default)]
     pub page: u32,
+    pub suite: Option<String>,
 }
 async fn packages(App(s): App<State>, Query(q): Query<Search>) -> Result<Json<Value>> {
+    let s = scoped(s, q.suite.as_deref())?;
     if q.q.len() > 256 {
         return Err(Error(
             StatusCode::BAD_REQUEST,
@@ -164,7 +191,12 @@ async fn packages(App(s): App<State>, Query(q): Query<Search>) -> Result<Json<Va
         json!({"packages":blocking(move||s.db.list(false,&q.q,q.page)).await?}),
     ))
 }
-async fn show(App(s): App<State>, Path(id): Path<String>) -> Result<Json<Value>> {
+async fn show(
+    App(s): App<State>,
+    Query(q): Query<Search>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let s = scoped(s, q.suite.as_deref())?;
     let package = blocking(move || s.db.get(&id)).await?;
     match package {
         Some(p) => Ok(Json(json!(p))),
@@ -179,8 +211,9 @@ async fn stage(
     App(s): App<State>,
     Extension(p): Extension<Principal>,
     Path(id): Path<String>,
+    Query(q): Query<Search>,
 ) -> Result<Json<Value>> {
-    stage_package(s, p, id).await?;
+    stage_package(scoped(s, q.suite.as_deref())?, p, id).await?;
     Ok(Json(json!({"staged":true})))
 }
 pub(crate) async fn stage_package(s: State, p: Principal, id: String) -> Result<()> {
@@ -192,9 +225,21 @@ pub(crate) async fn stage_package(s: State, p: Principal, id: String) -> Result<
         .map_err(|_| busy())?;
     blocking(move || {
         let _permit = permit;
-        s.db.audit_event(&p.actor, "package.stage", &id, "requested", &json!({}))?;
+        s.db.audit_event(
+            &p.actor,
+            "package.stage",
+            &id,
+            "requested",
+            &json!({"suite":s.db.suite()}),
+        )?;
         s.db.stage(&id)?;
-        s.db.audit_event(&p.actor, "package.stage", &id, "succeeded", &json!({}))
+        s.db.audit_event(
+            &p.actor,
+            "package.stage",
+            &id,
+            "succeeded",
+            &json!({"suite":s.db.suite()}),
+        )
     })
     .await?;
     Ok(())
@@ -202,8 +247,10 @@ pub(crate) async fn stage_package(s: State, p: Principal, id: String) -> Result<
 async fn upload(
     App(s): App<State>,
     Extension(p): Extension<Principal>,
+    Query(q): Query<Search>,
     body: Body,
 ) -> Result<Json<Value>> {
+    let s = scoped(s, q.suite.as_deref())?;
     p.operator()?;
     let permit = s.uploads.clone().try_acquire_owned().map_err(|_| busy())?;
     let temp = tempfile::NamedTempFile::new_in(&s.config.paths.uploads)
@@ -264,7 +311,7 @@ pub(crate) async fn accept_upload(
             "upload.inspect",
             &package.id,
             "succeeded",
-            &json!({}),
+            &json!({"suite":s.db.suite()}),
         )?;
         Ok(package)
     })
@@ -275,11 +322,18 @@ async fn generations(App(s): App<State>) -> Result<Json<Value>> {
         json!({"generations":blocking(move||repository::generations(&s.config)).await?}),
     ))
 }
-async fn jobs(App(s): App<State>) -> Result<Json<Value>> {
-    Ok(Json(json!({"jobs":blocking(move||s.db.jobs()).await?})))
+async fn jobs(App(s): App<State>, Extension(p): Extension<Principal>) -> Result<Json<Value>> {
+    Ok(Json(
+        json!({"jobs":blocking(move||authorized_jobs(&s,&p)).await?}),
+    ))
 }
-async fn job(App(s): App<State>, Path(id): Path<String>) -> Result<Json<Value>> {
-    let found = blocking(move || Ok(s.db.jobs()?.into_iter().find(|j| j["id"] == id))).await?;
+async fn job(
+    App(s): App<State>,
+    Extension(p): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    let found =
+        blocking(move || Ok(authorized_jobs(&s, &p)?.into_iter().find(|j| j["id"] == id))).await?;
     found.map(Json).ok_or(Error(
         StatusCode::NOT_FOUND,
         "job_not_found",
@@ -301,11 +355,19 @@ struct Publish {
 async fn publish(
     App(s): App<State>,
     Extension(p): Extension<Principal>,
+    Query(q): Query<Search>,
     Json(input): Json<Publish>,
 ) -> Result<(StatusCode, Json<Value>)> {
-    enqueue(s, p, "publish", Some(input.review_token)).await
+    enqueue(
+        scoped(s, q.suite.as_deref())?,
+        p,
+        "publish",
+        Some(input.review_token),
+    )
+    .await
 }
-async fn diff(App(s): App<State>) -> Result<Json<Value>> {
+async fn diff(App(s): App<State>, Query(q): Query<Search>) -> Result<Json<Value>> {
+    let s = scoped(s, q.suite.as_deref())?;
     let permit = s
         .publisher
         .clone()
@@ -506,4 +568,66 @@ pub(crate) async fn change_user(
     })
     .await?;
     Ok(())
+}
+
+pub(crate) fn scoped(mut s: State, suite: Option<&str>) -> Result<State> {
+    let suite = suite.unwrap_or(&s.config.repository.suite);
+    if !s.config.repository.has_suite(suite) {
+        return Err(crate::auth::error(StatusCode::BAD_REQUEST, "unknown_suite"));
+    }
+    s.db = s.db.for_suite(suite);
+    Ok(s)
+}
+fn authorized_jobs(s: &State, p: &Principal) -> anyhow::Result<Vec<Value>> {
+    let jobs = s.db.jobs()?;
+    if p.token.is_none() {
+        return Ok(jobs);
+    }
+    let conn = s.db.connect()?;
+    jobs.into_iter()
+        .filter_map(|j| {
+            let owner = conn.query_row(
+                "SELECT actor FROM jobs WHERE id=?1",
+                [j["id"].as_str().unwrap_or("")],
+                |r| r.get::<_, String>(0),
+            );
+            match owner {
+                Ok(actor) if actor == p.actor.id => Some(Ok(j)),
+                Ok(_) => None,
+                Err(e) => Some(Err(e.into())),
+            }
+        })
+        .collect()
+}
+async fn suites(App(s): App<State>, Extension(p): Extension<Principal>) -> Json<Value> {
+    let suites: Vec<_> = s
+        .config
+        .repository
+        .suite_names()
+        .into_iter()
+        .filter(|name| p.token.as_ref().is_none_or(|t| t.suites.contains(name)))
+        .collect();
+    Json(json!({"default":s.config.repository.suite,"suites":suites}))
+}
+async fn tokens(App(s): App<State>, Extension(p): Extension<Principal>) -> Result<Json<Value>> {
+    p.administrator()?;
+    Ok(Json(json!({"tokens":blocking(move||s.db.tokens()).await?})))
+}
+async fn create_token(
+    App(s): App<State>,
+    Extension(p): Extension<Principal>,
+    Json(input): Json<xxc_aptd_core::tokens::CreateToken>,
+) -> Result<Json<Value>> {
+    p.administrator()?;
+    let (token, secret) = blocking(move || s.db.create_token(&s.config, &p.actor, input)).await?;
+    Ok(Json(json!({"token":token,"secret":secret.as_str()})))
+}
+async fn revoke_token(
+    App(s): App<State>,
+    Extension(p): Extension<Principal>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>> {
+    p.administrator()?;
+    blocking(move || s.db.revoke_token(&p.actor, &id)).await?;
+    Ok(Json(json!({"revoked":true})))
 }

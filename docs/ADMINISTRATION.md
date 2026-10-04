@@ -27,10 +27,11 @@ origin, then validate and restart. The default is
 The origin must use canonical lowercase ASCII spelling, no path/trailing slash,
 and no explicit default port. Proxy headers cannot override it.
 
-For an isolated local HTTP development instance, set both
-`[server].external_url = "http://127.0.0.1:8088"` and
-`[admin].external_url = "http://127.0.0.1:8089"`. When either configured origin
-uses HTTPS, cookies require Secure transport. Keep real deployments behind TLS.
+For an isolated local HTTP administrative interface, set
+`[admin].external_url = "http://127.0.0.1:8089"`. Its scheme alone determines
+whether administrative cookies require Secure transport. The public origin can
+use HTTPS independently. Proxy headers cannot change cookie security. Keep normal
+administrative deployments behind TLS; direct HTTP is for trusted-network testing.
 
 ## Roles
 
@@ -127,3 +128,22 @@ key identity. It leaves activation to a root-managed configuration change.
 `/admin/signing` shows the configured backend, remote ID and fingerprint.
 Operators publish through the same reviewed generation workflow with either
 backend. See [SIGNING.md](SIGNING.md) for scopes, limits and offline verification.
+
+## Suites, project tokens and statistics
+
+Upload, package, staging and review pages offer a suite selector and links that
+carry the selected channel through the workflow. Review displays only that suite's
+changes; publication regenerates the complete signed archive atomically. Rollback
+restores all suites. Existing package versions remain available.
+
+Administrators manage scoped CI credentials at `/admin/tokens`. The secret is
+shown once; token metadata and revocation remain available afterward. See
+[AUTOMATION.md](AUTOMATION.md) for expiry, scope rules and a complete curl pipeline.
+The dashboard includes private traffic charts and rankings described in
+[ANALYTICS.md](ANALYTICS.md). Counts begin when collection is enabled, with no
+invented historical data.
+
+All browser assets and API calls use `/admin/static`, `/admin/favicon.svg` and
+`/admin/api/v1`. See [REVERSE-PROXY.md](REVERSE-PROXY.md) for a single-host path proxy.
+Keep the current LAN admin origin until that proxy route is operational, then set
+`admin.external_url` to the HTTPS origin without `/admin` and restart.

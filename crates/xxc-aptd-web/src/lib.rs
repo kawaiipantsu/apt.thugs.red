@@ -1,6 +1,9 @@
 pub mod admin;
+pub mod analytics;
 pub mod api;
+mod api_docs;
 pub mod auth;
+mod dashboard;
 pub mod keys;
 pub mod public;
 pub mod trust;
@@ -24,6 +27,7 @@ pub struct State {
     pub uploads: Arc<Semaphore>,
     pub passwords: Arc<Semaphore>,
     pub trust: Option<xxc_aptd_core::trust::TrustClient>,
+    pub analytics: analytics::Collector,
 }
 impl State {
     pub fn new(config: Config, db: Database) -> anyhow::Result<Self> {
@@ -34,7 +38,9 @@ impl State {
             credential_directory.as_deref(),
         )?;
         let upload_limit = config.server.max_concurrent_uploads;
+        let analytics = analytics::Collector::start(&config, db.clone())?;
         Ok(Self {
+            analytics,
             trust,
             config: Arc::new(config),
             db,

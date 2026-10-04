@@ -8,6 +8,9 @@ use std::path::PathBuf;
 struct Arguments {
     #[arg(long, global = true, default_value = "/run/xxc-aptd/admin.sock")]
     socket: PathBuf,
+    /// Select a configured suite for package, upload and publication operations.
+    #[arg(long, global = true)]
+    suite: Option<String>,
     #[arg(long, global = true, default_value = "/etc/xxc/aptd.conf")]
     config: PathBuf,
     #[arg(long, global = true)]
@@ -435,6 +438,11 @@ async fn main() -> Result<()> {
             r = r.query(&[("q", q)]);
         }
         r
+    };
+    let request = if let Some(suite) = a.suite {
+        request.query(&[("suite", suite)])
+    } else {
+        request
     };
     let response = request
         .send()

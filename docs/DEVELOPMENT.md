@@ -6,7 +6,7 @@ As root on a development machine:
 
 ```sh
 apt install build-essential pkg-config liblzma-dev apt-utils gnupg curl \
-  scdoc debhelper lintian python3 nodejs npm chromium
+  scdoc debhelper lintian python3 jq openssl nodejs npm chromium
 ```
 
 As a normal developer:
@@ -32,7 +32,7 @@ packages, then captures the public and authenticated admin workflow using Chromi
 No production configuration, credentials or CA connection are used. The generated
 client instructions use the reserved `apt.example.test` domain.
 
-Review the 13 images in `.build/screenshots/`, then copy the reviewed PNG files to
+Review the 16 images in `.build/screenshots/`, then copy the reviewed PNG files to
 `docs/screenshots/`. The [gallery](SCREENSHOTS.md) and README use those tracked
 images. Signing fingerprints are masked, login fields are empty, and credentials
 stay in the temporary test directory. Do not replace these with captures of a live
