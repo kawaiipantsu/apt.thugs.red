@@ -2,6 +2,7 @@
 """Local build/release maintenance. Network publication is always an explicit command."""
 import datetime
 import gzip
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -71,22 +72,77 @@ def bump(kind):
         kind = choose_bump([x.strip() for x in messages if x.strip()])
     major, minor, patch = map(int, old.split("."))
     new = {"major": f"{major+1}.0.0", "minor": f"{major}.{minor+1}.0", "patch": f"{major}.{minor}.{patch+1}"}[kind]
+    notes = ROOT / "CHANGELOG.md"
+    released_notes = promote_changelog(notes.read_text(), new)
     (ROOT / "VERSION").write_text(new + "\n")
     cargo = ROOT / "Cargo.toml"
     cargo.write_text(cargo.read_text().replace(f'version = "{old}"', f'version = "{new}"', 1))
     for path in list((ROOT / "docs/man").glob("*.scd")) + [ROOT / "config/aptd.conf.example"]:
         path.write_text(path.read_text().replace(f"XXC-APTD {old}", f"XXC-APTD {new}"))
-    for path in [ROOT / "README.md", *list((ROOT / "docs").glob("*.md"))]:
+    # Only current-version descriptions change; evidence, examples and screenshot
+    # captions retain the version they actually describe.
+    for path in [ROOT / "README.md", ROOT / "docs/ARCHITECTURE.md", ROOT / "docs/ROADMAP.md"]:
         path.write_text(path.read_text().replace(old, new))
     api_path = ROOT / "docs/openapi.json"
     api = json.loads(api_path.read_text())
     api["info"]["version"] = new
     api_path.write_text(json.dumps(api, indent=2) + "\n")
     changelog(new, 1, f"Release {new}.")
-    notes = ROOT / "CHANGELOG.md"
-    notes.write_text(notes.read_text().replace("# Changelog\n", f"# Changelog\n\n## {new}\n\n- See the Conventional Commit history for changes since {old}.\n", 1))
+    notes.write_text(released_notes)
     command(["cargo", "check", "--workspace"], stdout=subprocess.DEVNULL)
     version_check()
+
+
+def promote_changelog(text, new):
+    section = re.search(r"(?ms)^## Unreleased\n(.*?)(?=^## |\Z)", text)
+    assert section and section[1].strip(), "Write concrete Unreleased notes before bumping"
+    assert not re.search(r"(?m)^## " + re.escape(new) + r"(?:\s|$)", text), "Version already in changelog"
+    stamp = datetime.date.today().isoformat()
+    return text[:section.start()] + f"## Unreleased\n\n## {new} — {stamp}\n\n{section[1].strip()}\n\n" + text[section.end():]
+
+
+def release_notes(text, v):
+    section = re.search(r"(?ms)^## " + re.escape(v) + r"(?: — [^\n]+)?\n(.*?)(?=^## |\Z)", text)
+    assert section and section[1].strip(), "Release version has no changelog notes"
+    return section[1].strip() + "\n"
+
+
+def release_artifacts():
+    """Select only this application's exact current Debian revision."""
+    deb_version = re.fullmatch(r"xxc-aptd \(([^)]+)\) .*", (ROOT / "debian/changelog").read_text().splitlines()[0])[1]
+    artifacts = sorted((ROOT / "dist").glob(f"xxc-aptd_{deb_version}_*.deb"))
+    assert artifacts, "Run make deb for the current version/revision first"
+    for artifact in artifacts:
+        assert not artifact.is_symlink(), "Release artifacts must be regular files"
+        for field, expected in [("Package", "xxc-aptd"), ("Version", deb_version)]:
+            assert capture(["dpkg-deb", "-f", str(artifact), field]) == expected, "Debian artifact metadata mismatch"
+    return artifacts
+
+
+def prepare_release():
+    version_check()
+    assert not capture(["git", "status", "--porcelain"]), "Publication requires a clean worktree"
+    sha = capture(["git", "rev-parse", "HEAD"])
+    assert capture(["git", "rev-parse", f"v{version()}^{{commit}}"]) == sha, "Build and publish from the release tag"
+    artifacts = release_artifacts()
+    for artifact in artifacts:
+        with tempfile.TemporaryDirectory(prefix="xxc-release-check-") as tmp:
+            command(["dpkg-deb", "-x", str(artifact), tmp])
+            for name in ["usr/sbin/xxc-aptd", "usr/bin/xxc-apt-cli"]:
+                reported = capture([str(Path(tmp) / name), "--version"])
+                assert f"{version()} ({sha[:12]})" in reported, "Rebuild the package from the clean release commit"
+    output = ROOT / "dist" / f"v{version()}"
+    output.mkdir(exist_ok=True)
+    checksums = output / "SHA256SUMS"
+    lines = []
+    for artifact in artifacts:
+        with artifact.open("rb") as file:
+            lines.append(f"{hashlib.file_digest(file, 'sha256').hexdigest()}  {artifact.name}\n")
+    checksums.write_text("".join(lines))
+    notes = output / "release-notes.md"
+    notes.write_text(release_notes((ROOT / "CHANGELOG.md").read_text(), version()))
+    print(f"Release artifacts verified for v{version()} ({sha[:12]})")
+    return artifacts, checksums, notes
 
 
 def changelog(v, revision, text):
@@ -166,6 +222,10 @@ def release(kind):
     command(["git", "add", "-u"])
     command(["git", "commit", "-m", f"chore(release): v{version()}"], stdout=subprocess.DEVNULL)
     command(["git", "tag", "-a", f"v{version()}", "-m", f"XXC-APTD {version()}"])
+    # CI ran before the commit. Rebuild so distributed binaries identify the
+    # clean tagged source, rather than the previous commit and a dirty worktree.
+    command(["make", "lintian"])
+    prepare_release()
     print("Release commit and tag created. Review before pushing.")
 
 
@@ -198,12 +258,15 @@ def main(task):
             shutil.copyfile(file, ROOT / "dist" / file.name)
     elif task.startswith("release-"):
         release(task.removeprefix("release-"))
+    elif task == "prepare-release":
+        prepare_release()
     elif task == "publish-release":
         category = os.environ.get("DISCUSSION_CATEGORY")
-        assert category, "Set DISCUSSION_CATEGORY to an existing GitHub category"
-        artifacts = list((ROOT / "dist").glob("*.deb"))
-        assert artifacts, "Run make deb first"
-        command(["gh", "release", "create", f"v{version()}", "--verify-tag", "--generate-notes", "--discussion-category", category, *map(str, artifacts)])
+        artifacts, checksums, notes = prepare_release()
+        args = ["gh", "release", "create", f"v{version()}", "--verify-tag", "--title", f"XXC-APTD {version()}", "--notes-file", str(notes)]
+        if category:
+            args.extend(["--discussion-category", category])
+        command([*args, *map(str, artifacts), str(checksums)])
     else:
         raise SystemExit("Unknown maintenance task")
 

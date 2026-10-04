@@ -1,6 +1,7 @@
 name: ci
 on:
   push:
+    branches: ['**']
   pull_request:
 permissions:
   contents: read
@@ -9,12 +10,16 @@ jobs:
     runs-on: ubuntu-24.04
     container: debian:trixie
     steps:
+      - name: Bootstrap Git and certificate trust
+        run: |
+          apt-get update --error-on=any
+          apt-get install -y git ca-certificates
       - uses: actions/checkout@v4
       - name: Build and test prerequisites
         run: |
           printf 'deb https://deb.debian.org/debian trixie-backports main\n' > /etc/apt/sources.list.d/xxc-backports.list
-          apt-get update
-          apt-get install -y build-essential pkg-config liblzma-dev apt-utils gnupg openssl curl ca-certificates git python3 scdoc debhelper lintian nodejs npm chromium
+          apt-get update --error-on=any
+          apt-get install -y build-essential pkg-config liblzma-dev apt-utils gnupg openssl curl ca-certificates git python3 jq scdoc debhelper lintian nodejs npm chromium
           apt-get install -y -t trixie-backports cargo rustc
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup.sh
           sh /tmp/rustup.sh -y --profile minimal --default-toolchain 1.94.1 --component clippy,rustfmt
