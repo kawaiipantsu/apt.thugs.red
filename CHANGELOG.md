@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-04
+
 This development release adds automation, suite management and repository traffic
 statistics. It preserves `/repo`, `zerotrust main` and the legacy public-key URL.
 Production 1.0 acceptance remains in progress; see the

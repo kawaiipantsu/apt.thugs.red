@@ -19,7 +19,7 @@ of the infrastructure behind `apt.thugs.red`. It preserves the `/repo` archive
 contract and `zerotrust main` while adding a staged, verifiable publication
 workflow and a human-friendly public interface.
 
-**Development status: 0.1.0.** Signed binary repositories, Unix administration,
+**Development status: 0.2.0.** Signed binary repositories, Unix administration,
 the public browser and authenticated web administration are implemented. Local
 users, roles, project API tokens, multiple suites, reviewed publication, traffic
 statistics and a public developer guide are supported.

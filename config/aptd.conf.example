@@ -1,4 +1,4 @@
-# XXC-APTD 0.1.0. Unknown and unimplemented options are rejected.
+# XXC-APTD 0.2.0. Unknown and unimplemented options are rejected.
 # Normal operation reads this file; it never rewrites it.
 [server]
 # Set 0.0.0.0:8088 to accept public HTTP on all IPv4 interfaces.

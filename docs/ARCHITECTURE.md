@@ -1,7 +1,7 @@
 # XXC-APTD architecture
 
 XXC-APTD is a THUGS(red) project by Kawaiipantsu. The target is a production
-replacement for the repository at `https://apt.thugs.red/repo`. Version 0.1.0
+replacement for the repository at `https://apt.thugs.red/repo`. Version 0.2.0
 implements signed archives, authenticated administration and project automation.
 Production readiness requires the remaining acceptance checks.
 See [ROADMAP.md](ROADMAP.md) for implemented and outstanding acceptance gates.

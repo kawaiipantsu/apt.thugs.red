@@ -1,4 +1,4 @@
-xxc-aptd(8) "XXC-APTD 0.1.0"
+xxc-aptd(8) "XXC-APTD 0.2.0"
 
 # NAME
 

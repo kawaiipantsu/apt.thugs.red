@@ -1,3 +1,9 @@
+xxc-aptd (0.2.0-1) unstable; urgency=medium
+
+  * Release 0.2.0.
+
+ -- XXC-APTD project <maintainer@example.invalid>  Sun, 04 Oct 2026 00:26:38 +0000
+
 xxc-aptd (0.1.0-1) unstable; urgency=medium
 
   * Initial development release: signed repository vertical slice.

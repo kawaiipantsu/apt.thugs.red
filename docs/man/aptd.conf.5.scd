@@ -1,4 +1,4 @@
-aptd.conf(5) "XXC-APTD 0.1.0"
+aptd.conf(5) "XXC-APTD 0.2.0"
 
 # NAME
 

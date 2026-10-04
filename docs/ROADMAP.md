@@ -1,6 +1,6 @@
 # Roadmap
 
-Version 0.1.0 implements the repository and authenticated administration slices. The supplied banner
+Version 0.2.0 implements the repository and authenticated administration slices. The supplied banner
 is preserved, and the source and wiki remotes are configured separately.
 Checked items have implementation and passing local tests. They do not imply
 production 1.0 acceptance. See [VERIFICATION.md](VERIFICATION.md) for evidence.

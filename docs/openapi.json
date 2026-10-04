@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "XXC-APTD management",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Unix socket: filesystem administrator authority. Administrative HTTP: local session, RBAC, exact Origin and CSRF for mutations. Public HTTP never serves these endpoints. Scoped project bearer tokens authorize only explicit publishing routes and suites. /admin is an equivalent private TCP API prefix."
   },
   "servers": [

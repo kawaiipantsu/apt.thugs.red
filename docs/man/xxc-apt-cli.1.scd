@@ -1,4 +1,4 @@
-xxc-apt-cli(1) "XXC-APTD 0.1.0"
+xxc-apt-cli(1) "XXC-APTD 0.2.0"
 
 # NAME
 
