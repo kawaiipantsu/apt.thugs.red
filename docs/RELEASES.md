@@ -37,6 +37,15 @@ repository variable `RELEASE_DISCUSSION_CATEGORY` to an existing category such
 as `Announcements` to attach a release discussion and notify its subscribers.
 No announcement is sent during normal builds. Pushing `vX.Y.Z` starts the release
 workflow automatically; do not also publish manually while that workflow runs.
+The workflow also accepts an existing tag through `workflow_dispatch`, so a
+runner/workflow repair can retry an unpublished version without moving its tag:
+
+```sh
+gh workflow run release.yml --ref main -f tag=vX.Y.Z
+```
+
+The runner trusts only its checked-out workspace and rebuilds the core crate
+after restoring Cargo caches, ensuring its embedded Git identity is fresh.
 If the workflow is unavailable, build locally from the clean release tag and use:
 
 ```sh
@@ -51,6 +60,50 @@ discussion category publishes without an announcement. Existing releases are
 never overwritten. Download the package and `SHA256SUMS` into one directory and
 run `sha256sum --check SHA256SUMS` before installation. These checksums detect
 download corruption; they are distributed through GitHub's HTTPS release page.
+
+## Publish the Debian package to APT
+
+Project Debian releases also belong in the official archive's `zerotrust` suite.
+Publish the **same bytes** distributed by the GitHub release. Rebuilding the same
+Debian version on another machine can produce different bytes and will be rejected
+as a conflicting upload. Wait for the tagged GitHub workflow to succeed, then run
+these commands on a release worker that can reach the administrative API:
+
+```sh
+release_version=$(cat VERSION)
+release_dir="$PWD/dist/github-v$release_version"
+mkdir -p "$release_dir"
+gh release download "v$release_version" --repo kawaiipantsu/apt.thugs.red \
+  --pattern '*.deb' --pattern SHA256SUMS --dir "$release_dir"
+(cd "$release_dir" && sha256sum --check SHA256SUMS)
+export XXC_SUITE=zerotrust
+export XXC_DEB="$release_dir/xxc-aptd_${release_version}-1_amd64.deb"
+```
+
+Select the actual packaging revision/architecture if different. Supply
+`XXC_API_BASE` from the operator and `XXC_TOKEN_FILE` through a private file or
+CI file-secret facility. The token needs read, upload, stage and publish scopes
+for `zerotrust`. Keep both deployment addresses and token values out of Git,
+release notes, screenshots and shell tracing. A private deployment may require
+running this step on its internal release worker; hosted GitHub runners do not
+automatically have access to that network.
+
+Run the [tested automation example](AUTOMATION.md#ci-example). It streams the
+upload, stages it, checks the diff, posts the review token and waits for the job
+to succeed. Reject any unrelated staged additions, removals or downgrades.
+Do not publish a suite merely because the upload succeeded. An already published
+identical package needs verification rather than repeated staging.
+
+The public contract is documented at [the API guide](https://apt.thugs.red/api)
+and [OpenAPI](https://apt.thugs.red/api/openapi.json). These public documentation
+URLs do not expose publishing operations. Do not infer an administrative API base
+from the public hostname or the example `/admin` prefix.
+
+After publication, use an isolated APT configuration with the repository-specific
+keyring to run `apt-get update` and download the exact package version. Verify the
+download's SHA-256 against the GitHub artifact and confirm the package appears in
+the public package browser. Check through the public proxy when reachable; record
+origin-only verification explicitly when the release worker cannot reach it.
 
 ## Wiki
 

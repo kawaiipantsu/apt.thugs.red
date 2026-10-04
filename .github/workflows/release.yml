@@ -2,22 +2,34 @@ name: release
 on:
   push:
     tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build and publish
+        required: true
+        type: string
 permissions:
   contents: write
   discussions: write
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 jobs:
   package:
     runs-on: ubuntu-24.04
     container: debian:trixie
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - name: Bootstrap Git and certificate trust
         run: |
           apt-get update --error-on=any
           apt-get install -y git ca-certificates
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Trust this container workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build prerequisites
         run: |
           printf 'deb https://deb.debian.org/debian trixie-backports main\n' > /etc/apt/sources.list.d/xxc-backports.list
@@ -40,7 +52,8 @@ jobs:
           npm ci --ignore-scripts
       - name: Verify tag and build
         run: |
-          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          test "$RELEASE_TAG" = "v$(cat VERSION)"
+          cargo clean --package xxc-aptd-core
           make ci
           make prepare-release
       - name: Publish release and optional discussion
