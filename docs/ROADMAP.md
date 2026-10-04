@@ -88,7 +88,7 @@ production 1.0 acceptance. See [VERIFICATION.md](VERIFICATION.md) for evidence.
 - [x] MIT license and shipped dependency license notices, including verified supplemental workspace notices
 - [x] Transactional schema upgrade with private recovery backup and failure rollback tests
 - [x] GitHub CI/release workflow and configurable release discussion tooling
-- [ ] Tagged GitHub release workflow exercised against a reviewed source commit
+- [x] Tagged GitHub release workflow exercised against a reviewed source commit; identical Debian artifact published to zerotrust through the scoped API
 - [ ] Package install/upgrade tests retaining config, keys, users, DB and repository
 - [ ] Reproducible/offline source-package builds and vendored dependency supply chain
 

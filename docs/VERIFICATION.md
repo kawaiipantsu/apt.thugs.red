@@ -51,8 +51,8 @@ reproducible offline builds and an independent security review remain outstandin
 Automated accessibility checks do not replace assistive-technology user testing.
 
 GitHub repository metadata and the release discussion category are configured.
-The baseline source and screenshot gallery have been pushed. The current feature
-changes are validated locally; no new commit or push is performed by this change. No release announcement or wiki synchronization was sent.
+The source and screenshot gallery have been pushed. Release publication evidence
+is recorded below; canonical documentation also supplies the project wiki.
 
 ## Suite, automation and traffic checks
 
@@ -105,3 +105,35 @@ Markdown/OpenAPI bytes, HEAD, redirects, main navigation and sitemap, plus rejec
 of public management calls. Configuration, account records, signing credentials,
 package records and the active generation were preserved. External proxy routing
 is separate from these direct origin checks.
+
+## 0.2.0 release publication
+
+The immutable `v0.2.0` tag points to `b17e196ef191`. Local `make ci` and
+[GitHub CI for that commit](https://github.com/kawaiipantsu/apt.thugs.red/actions/runs/37165209090)
+passed. The first release job passed its tests and package build, then correctly
+stopped when Git rejected container workspace ownership during the final artifact
+check. The workflow was repaired to trust only its workspace and refresh cached
+build metadata. An explicit retry against the same unchanged tag
+[completed all checks and publication](https://github.com/kawaiipantsu/apt.thugs.red/actions/runs/37165888607).
+
+[Release 0.2.0](https://github.com/kawaiipantsu/apt.thugs.red/releases/tag/v0.2.0)
+contains `xxc-aptd_0.2.0-1_amd64.deb` and `SHA256SUMS`, with an
+[Announcements discussion](https://github.com/kawaiipantsu/apt.thugs.red/discussions/1).
+Both packaged binaries report `0.2.0 (b17e196ef191)`. Source and packaged payload
+scans found no local deployment addresses, credentials or configured signing
+identifiers. Release packaging used generic defaults and fixture screenshots.
+
+The exact GitHub artifact was uploaded, staged and published through the scoped
+administrative API into `zerotrust main`. The review allowed only that addition,
+with no unrelated staged changes, removals or downgrades. The job succeeded.
+An isolated real APT client verified the pinned public signing key, signed update,
+forced by-hash acquisition and download of `xxc-aptd=0.2.0-1`. Its SHA-256 matched:
+
+```text
+5746bea531def26ab8a38e0c440bd937ce24bb3321f4a696b03167cdb73671ca
+```
+
+Package details were also verified at the public origin. External HTTPS access
+was unavailable from the release worker, so these checks do not establish the
+external proxy's behavior. Host APT sources and installed packages were unchanged
+by the acquisition test. The service retained its configuration and credentials.
